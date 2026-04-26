@@ -1,0 +1,1653 @@
+================================================================================
+  SMART ACADEMIC SCHEDULING SYSTEM (SASS) — COMPLETE APPLICATION GUIDE
+================================================================================
+Version: 1.0.0
+Build: 100
+Firebase Project: roomsync-c70c4
+Platform: Flutter (Android & Web)
+Language: Dart
+State Management: Provider Package
+Database: Firebase Firestore + Firebase Authentication
+
+================================================================================
+TABLE OF CONTENTS
+================================================================================
+1. OVERVIEW & ARCHITECTURE
+2. APPLICATION FLOW
+3. STATE MANAGEMENT (AppState)
+4. ROOM OVERRIDES & THEIR IMPACT
+5. AUTHENTICATION SYSTEM
+6. FIRESTORE INTEGRATION & REAL-TIME LISTENERS
+7. CONFLICT DETECTION & RESOLUTION
+8. COMPONENTS BREAKDOWN
+9. KEY DESIGN PATTERNS
+10. FIREBASE RULES
+
+================================================================================
+1. OVERVIEW & ARCHITECTURE
+================================================================================
+
+SASS is an automated academic scheduling system for educational institutions
+that:
+  • Eliminates scheduling conflicts (room double-bookings, teacher overlaps)
+  • Monitors room availability in real-time
+  • Provides dual interfaces: ADMIN (computer) and TEACHER (phone-friendly)
+  • Uses Firebase for real-time synchronization
+  • Detects equipment mismatches and capacity issues
+
+PROJECT STRUCTURE:
+  lib/
+  ├── main.dart                          ← Entry point, Firebase initialization
+  ├── screens/                           ← UI screens
+  │   ├── splash_screen.dart            ← Launch animation
+  │   ├── login_screen.dart             ← Authentication
+  │   ├── admin_shell.dart              ← Admin navigation shell
+  │   ├── admin_dashboard_screen.dart   ← Admin stats & overview
+  │   ├── teacher_dashboard_screen.dart ← Teacher home page
+  │   ├── room_availability_screen.dart ← Room management
+  │   ├── schedule_screen.dart          ← View/edit schedules
+  │   ├── conflict_detection_screen.dart ← Conflict monitoring
+  │   ├── auto_scheduler_screen.dart    ← Auto-scheduling
+  │   └── ...other screens
+  ├── providers/
+  │   └── app_state.dart                ← Central state management
+  ├── models/
+  │   ├── teacher.dart                  ← Teacher data class
+  │   ├── room.dart                     ← Room data class
+  │   ├── subject.dart                  ← Subject data class
+  │   └── schedule.dart                 ← Schedule & Conflict classes
+  ├── theme/
+  │   └── app_theme.dart                ← Colors, fonts, themes
+  ├── data/
+  │   ├── mock_data.dart                ← Fallback data
+  │   └── firebase_service.dart         ← Firebase operations
+  └── utils/
+      └── responsive_layout.dart        ← Breakpoint helpers
+
+================================================================================
+2. APPLICATION FLOW
+================================================================================
+
+USER JOURNEY:
+
+A) FIRST LAUNCH:
+   ┌─────────────────────────────────────────────────────────────┐
+   │ SplashScreen (splash_screen.dart)                           │
+   │ • Logo animation (700ms fade-in + 900ms elastic scale)      │
+   │ • Rings spinning, glow effects                              │
+   │ • Auto-navigates to LoginScreen after 2.6 seconds           │
+   │ Reference: splash_screen.dart, line 60-80 (_runSequence)    │
+   └─────────────────────────────────────────────────────────────┘
+                           ↓
+   ┌─────────────────────────────────────────────────────────────┐
+   │ LoginScreen (login_screen.dart)                             │
+   │ • Email + Password input fields                             │
+   │ • Toggle: Admin or Teacher login                            │
+   │ • Admin bypass: "admin" / "admin123" (for testing)          │
+   │ • Teacher auth: Firebase Email/Password auth                │
+   │ Reference: login_screen.dart, line 116-160 (_loginAdmin)    │
+   └─────────────────────────────────────────────────────────────┘
+                           ↓
+                  [Authentication]
+                           ↓
+        ┌──────────────────┴──────────────────┐
+        ↓                                     ↓
+   ADMIN PATH                           TEACHER PATH
+        │                                     │
+        ↓                                     ↓
+   AdminShell                       TeacherDashboardScreen
+   (admin_shell.dart)               (teacher_dashboard_screen.dart)
+        │                                     │
+   Side Rail (wide)              Phone-friendly layout
+   + Bottom Nav (mobile)                     │
+        │                                     ↓
+        ├─ Dashboard                    My Schedule
+        ├─ Rooms                        Conflicts
+        ├─ Teachers                     Chat with Admin
+        ├─ Subjects                     Profile
+        ├─ Sections                     Settings
+        ├─ Schedule
+        ├─ Reports
+        └─ Profile
+
+
+B) ADMIN LOGIN FLOW:
+   Step 1: User enters email & password on LoginScreen
+   Reference: login_screen.dart, lines 86-114 (_login method)
+   
+   Step 2: Check if "admin" / "admin123" (local bypass for testing)
+   Reference: login_screen.dart, lines 120-130
+   
+   Step 3: If local bypass fails, authenticate with Firebase
+   Reference: login_screen.dart, lines 146-155
+   
+   Step 4: Retrieve admin record from Firestore
+   Reference: login_screen.dart, lines 156-175
+   
+   Step 5: Set AppState._isAdmin = true, _currentTeacher = adminTeacher
+   Reference: login_screen.dart, lines 176-182
+   
+   Step 6: Navigate to AdminShell (multi-tab interface)
+   Reference: login_screen.dart, line 185
+
+
+C) TEACHER LOGIN FLOW:
+   Step 1: User enters email & password
+   Reference: login_screen.dart, line 97
+   
+   Step 2: Firebase Auth validates credentials
+   Reference: login_screen.dart, lines 190-220 (_loginTeacher method)
+   
+   Step 3: Retrieve teacher profile from Firestore
+   Reference: login_screen.dart, lines 225-250
+   
+   Step 4: Load teacher's assigned subjects & schedule
+   Reference: login_screen.dart, lines 251-280
+   
+   Step 5: Set AppState._isAdmin = false, _currentTeacher = teacher
+   Reference: login_screen.dart, line 285
+   
+   Step 6: Navigate to TeacherDashboardScreen
+   Reference: login_screen.dart, line 290
+
+================================================================================
+3. STATE MANAGEMENT (AppState) — Provider Pattern
+================================================================================
+
+LOCATION: lib/providers/app_state.dart
+
+AppState is a ChangeNotifier that manages the ENTIRE application state.
+It acts as a single source of truth for all data.
+
+CORE DATA PROPERTIES:
+┌──────────────────────────────────────────────────────────────┐
+│ AUTHENTICATION STATE                                         │
+├──────────────────────────────────────────────────────────────┤
+│ _isLoggedIn : bool         → User is authenticated           │
+│ _isAdmin : bool            → Is user an admin?               │
+│ _currentTeacher : Teacher? → Current logged-in user          │
+│                                                               │
+│ Reference: app_state.dart, lines 57-65                       │
+└──────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────┐
+│ DATA ENTITIES                                                │
+├──────────────────────────────────────────────────────────────┤
+│ _teachers : List<Teacher>         → All teachers             │
+│ _rooms : List<Room>               → All rooms                │
+│ _subjects : List<Subject>         → All subjects             │
+│ _sections : List<String>          → All section codes        │
+│ _scheduleEntries : List<ScheduleEntry>  → Schedule entries   │
+│ _conflicts : List<ScheduleConflict>     → Detected conflicts │
+│ _chatMessages : List<ChatMessage>       → Teacher requests   │
+│ _roomOverrides : List<RoomOverride>     → Blocked room slots │
+│                                                               │
+│ Reference: app_state.dart, lines 66-73                       │
+└──────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────┐
+│ REQUEST-DRIVEN STATE                                         │
+├──────────────────────────────────────────────────────────────┤
+│ _cancelledEntryIds : Set<String>           → Cancelled class │
+│ _teacherRequestStatuses : Map<String, String> → Request status
+│                                                               │
+│ Reference: app_state.dart, lines 74-76                       │
+└──────────────────────────────────────────────────────────────┘
+
+INITIALIZATION FLOW:
+
+When AppState() is created:
+  1. Constructor calls _loadData()
+     Reference: app_state.dart, line 105
+
+  2. Seed UI with MockData (so app never shows empty state)
+     Reference: app_state.dart, lines 120-137
+     - Teachers from MockData.teachers
+     - Rooms from MockData.rooms
+     - Subjects from MockData.subjects
+     - Sections hardcoded (BSCS 1-A, BSCS 1-B, etc.)
+     - Schedule entries from MockData.scheduleEntries
+     - Chat messages = empty (Firestore is source of truth)
+
+  3. Call notifyListeners() to update UI
+     Reference: app_state.dart, line 138
+
+  4. Load data from Firestore (overlays mock data)
+     Reference: app_state.dart, lines 141-149
+     - _loadSubjectsFromFirestore()
+     - _loadTeachersFromFirestore()
+     - _loadRoomsFromFirestore()
+     - _loadSectionsFromFirestore()
+     - _resolveTeacherSubjects() (link teachers ↔ subjects)
+     - _detectConflicts() (algorithm to find conflicts)
+
+  5. Subscribe to real-time Firestore updates
+     Reference: app_state.dart, lines 151-155
+     - _subscribeToSchedules()
+     - _subscribeToChatMessages()
+     - _subscribeToCancelledClasses()
+     - _subscribeToTeacherRequestStatuses()
+     - _subscribeToRoomOverrides()
+
+
+ACCESSING STATE IN WIDGETS:
+
+To access AppState in any widget, use Provider pattern:
+
+  // Read-only access:
+  Consumer<AppState>(
+    builder: (context, state, _) {
+      return Text('Rooms: ${state.rooms.length}');
+    },
+  );
+
+  // For interaction:
+  final state = context.read<AppState>();
+  state.login(email, password);
+
+
+COMPUTED PROPERTIES (calculated from data):
+
+Reference: app_state.dart, lines 89-94
+│ availableRooms : int
+│   → Rooms where status == RoomStatus.available
+│   → Filter: _rooms.where((r) => r.status == RoomStatus.available)
+│
+│ occupiedRooms : int
+│   → Rooms where status == RoomStatus.occupied
+│   → Filter: _rooms.where((r) => r.status == RoomStatus.occupied)
+│
+│ scheduledClasses : int
+│   → Count of all schedule entries
+│
+│ activeConflicts : int
+│   → Conflicts that are NOT yet resolved
+│   → Filter: _conflicts.where((c) => !c.isResolved)
+│
+│ pendingChatRequests : int
+│   → Chat messages waiting for admin response
+│   → Filter: _chatMessages.where((m) => !m.isResolved)
+│
+│ occupancyRate : double
+│   → occupiedRooms / totalRooms (0.0 to 1.0)
+
+These are used in:
+  • admin_dashboard_screen.dart (dashboard cards)
+  • room_availability_screen.dart (occupancy visualization)
+
+================================================================================
+4. ROOM OVERRIDES & THEIR IMPACT ON THE SYSTEM
+================================================================================
+
+WHAT IS A ROOM OVERRIDE?
+
+A Room Override is a TIME-BASED BLOCK on a room. It prevents scheduling 
+during a specific date range. Examples:
+  • Faculty meetings (whole day)
+  • Maintenance windows
+  • Special events
+  • Closed for holidays
+
+DEFINITION:
+
+Reference: app_state.dart, lines 14-55
+
+class RoomOverride {
+  final String id;              → Unique identifier
+  final String roomId;          → Which room is blocked
+  final String roomName;        → Human-readable room name
+  final String reason;          → Why is it blocked (event desc)
+  final DateTime startDate;     → Block starts
+  final DateTime endDate;       → Block ends
+}
+
+KEY METHOD: coversDate()
+Reference: app_state.dart, lines 32-37
+
+  bool coversDate(DateTime date) {
+    // Normalize dates to ignore time (day-level comparison)
+    final d = DateTime(date.year, date.month, date.day);
+    final s = DateTime(startDate.year, startDate.month, startDate.day);
+    final e = DateTime(endDate.year, endDate.month, endDate.day);
+    return !d.isBefore(s) && !d.isAfter(e);
+  }
+
+EXAMPLE:
+  Override: 2025-01-15 to 2025-01-17 (maintenance)
+  
+  coversDate(2025-01-15) → TRUE  (first day, included)
+  coversDate(2025-01-16) → TRUE  (middle day, included)
+  coversDate(2025-01-17) → TRUE  (last day, included)
+  coversDate(2025-01-14) → FALSE (before start)
+  coversDate(2025-01-18) → FALSE (after end)
+
+
+SYSTEM IMPACT:
+
+1) REAL-TIME SUBSCRIPTION:
+   Reference: app_state.dart, lines 257-264 (_subscribeToRoomOverrides)
+   
+   The app listens to Firestore collection 'room_overrides' and updates
+   _roomOverrides whenever a new override is created or deleted.
+
+2) CONFLICT DETECTION ALGORITHM:
+   Reference: app_state.dart, lines 400-520 (_detectConflicts)
+   
+   When checking if a room can be scheduled, the algorithm verifies:
+   
+   a) Check if room is available for the scheduled day
+   b) Check if room has any active overrides that cover that day
+   c) If override found, CREATE A CONFLICT
+
+   PSEUDOCODE:
+   ```
+   for each schedule entry:
+     for each room override:
+       if override.coversDate(entry's date):
+         Add conflict: "Room is blocked due to [reason]"
+   ```
+
+3) ADMIN DASHBOARD IMPACT:
+   Reference: admin_dashboard_screen.dart, line 180-200
+   
+   The "Room Availability" card shows:
+   - Total rooms
+   - Available rooms (excluding overridden rooms)
+   - Occupied rooms
+   - In maintenance (via overrides)
+
+4) SCHEDULING PREVENTION:
+   Reference: auto_scheduler_screen.dart, line 300-350
+   
+   When admin tries to auto-schedule, the algorithm checks:
+   
+   ```
+   proposed_schedule = {
+     room: "1A",
+     day: "Monday",
+     time: "08:00-10:00"
+   }
+   
+   for each override in _roomOverrides:
+     if override.roomId == "1A" AND override.coversDate(Monday):
+       REJECT: "Room is not available due to: " + override.reason
+   ```
+
+5) ROOM AVAILABILITY SCREEN:
+   Reference: room_availability_screen.dart, line 250-300
+   
+   When displaying room details, show:
+   - Room status (available, occupied, maintenance, event)
+   - If status == maintenance or event, display reason
+   - This reason comes from the override
+
+EXAMPLE WORKFLOW:
+
+SCENARIO: Faculty meeting on Jan 15, 2025 in Room 1A
+
+Step 1: Admin creates override via Room Manager
+        Reference: room_manager_screen.dart, line 400
+        
+  RoomOverride(
+    id: 'override_1',
+    roomId: 'r1',
+    roomName: '1A',
+    reason: 'Faculty Meeting',
+    startDate: DateTime(2025, 1, 15),
+    endDate: DateTime(2025, 1, 15)
+  )
+
+Step 2: Firebase stores it in 'room_overrides' collection
+        Firestore path: /room_overrides/override_1
+        
+Step 3: AppState subscription fires (_subscribeToRoomOverrides)
+        Reference: app_state.dart, line 257
+        _roomOverrides list is updated with new override
+        notifyListeners() → all widgets rebuild
+
+Step 4: Conflict detection runs (_detectConflicts)
+        Reference: app_state.dart, line 400
+        
+        For any schedule entry on Jan 15 in room 1A:
+        - detectConflicts() finds the override
+        - Creates ScheduleConflict with type = "Room Blocked"
+        - activeConflicts count increases
+        
+Step 5: UI updates show:
+        • ConflictDetectionScreen shows new conflict
+        • admin_dashboard_screen shows red warning
+        • Room 1A marked as "unavailable" on that day
+        • Auto-scheduler skips room 1A for Jan 15
+
+Step 6: Teacher sees in their view:
+        • If their class was scheduled in 1A on Jan 15
+        • Chat message appears: "Your room is blocked due to Faculty Meeting"
+        • They can request to reschedule
+
+
+REAL-WORLD IMPACT EXAMPLE:
+
+BEFORE OVERRIDE:
+  Room 1A Status: Available
+  Availability: 100%
+  Can schedule: YES
+
+AFTER OVERRIDE (Faculty Meeting, Jan 15-17):
+  Room 1A Status: Event / Maintenance
+  Availability: (28 days - 3 days) / 31 days = 90%
+  Can schedule on Jan 15-17: NO → CONFLICT CREATED
+
+
+HOW IT APPEARS IN ADMIN DASHBOARD:
+Reference: admin_dashboard_screen.dart, lines 200-250
+
+  DashboardCard(
+    title: 'Room Availability',
+    count: '${state.availableRooms}/${state.rooms.length}',
+    icon: Icons.meeting_room,
+    color: Colors.green,
+    onTap: () => _navigateToRooms()
+  )
+
+When overrides exist:
+  - availableRooms decreases (filtered out)
+  - Color changes from green to yellow/red
+  - Tooltip shows: "3 rooms blocked due to overrides"
+
+
+HOW IT APPEARS IN ROOM CARD:
+Reference: room_card.dart, lines 60-100
+
+  if (room.status == RoomStatus.event || 
+      room.status == RoomStatus.maintenance) {
+    // Show the eventNote (from override reason)
+    Text('Reason: ${room.eventNote}')  // e.g. "Faculty Meeting"
+  }
+
+================================================================================
+5. AUTHENTICATION SYSTEM
+================================================================================
+
+TWO AUTHENTICATION PATHS:
+
+A) FIREBASE AUTHENTICATION (Production)
+   Reference: firebase_service.dart, lines 36-47
+
+B) LOCAL HARDCODED BYPASS (Testing)
+   Reference: login_screen.dart, lines 120-130
+
+
+FIREBASE AUTHENTICATION FLOW:
+
+For ADMIN (if not using bypass):
+  1. Admin enters email + password
+  2. FirebaseAuth.signInWithEmailAndPassword()
+     Reference: firebase_service.dart, line 39
+     
+  3. If successful, retrieve admin record from Firestore
+     Query: db.collection('teachers').where('isAdmin', '==', true)
+     Reference: login_screen.dart, line 150
+     
+  4. Verify password matches stored password
+     (Note: In production, NEVER store plaintext passwords!)
+     Reference: login_screen.dart, line 160
+
+
+For TEACHER:
+  1. Teacher enters email + password
+  2. FirebaseAuth.signInWithEmailAndPassword()
+     Reference: firebase_service.dart, line 39
+     
+  3. Retrieve teacher profile from Firestore
+     Query: db.collection('teachers').where('email', '==', email)
+     Reference: login_screen.dart, line 215
+     
+  4. Verify password matches
+     Reference: login_screen.dart, line 225
+     
+  5. Load assigned subjects
+     Reference: login_screen.dart, line 235
+
+
+HARDCODED BYPASS (FOR TESTING):
+
+Admin Login:
+  Email: "admin"
+  Password: "admin123"
+  Reference: login_screen.dart, lines 120-130
+  
+  if (email == 'admin' && password == 'admin123') {
+    // Create mock admin
+    final adminTeacher = Teacher(
+      id: 'admin',
+      firstName: 'System',
+      lastName: 'Administrator',
+      email: 'admin@sass.local',
+      // ... other fields
+    );
+    
+    state.login(adminTeacher, isAdmin: true);
+    navigateTo(AdminShell);
+  }
+
+
+TEACHER TEST ACCOUNTS:
+
+From mock_data.dart, line 100+:
+  • Dr. Maria Santos (email: maria@sass.local)
+  • Prof. Juan dela Cruz (email: juan@sass.local)
+  • etc.
+  
+These can log in with password: "password123" (from MockData)
+Reference: mock_data.dart, lines 150-160
+
+
+ERROR HANDLING:
+
+Common auth errors:
+  Reference: firebase_service.dart, lines 48-63
+  
+  'user-not-found'
+    → "No account found for this email."
+    → Display: "User not found"
+  
+  'wrong-password'
+    → "Incorrect password."
+    → Display: "Invalid credentials"
+  
+  'invalid-email'
+    → "Invalid email address."
+    → Display: "Please enter a valid email"
+  
+  'user-disabled'
+    → "This account has been disabled."
+    → Display: "Account disabled"
+
+
+SESSION MANAGEMENT:
+
+When logged in:
+  AppState._isLoggedIn = true
+  AppState._currentTeacher = [logged-in user]
+  Reference: app_state.dart, lines 58-65
+
+When logging out:
+  FirebaseAuth.instance.signOut()
+  AppState.logout() → sets _isLoggedIn = false
+  Reference: settings_screen.dart, line 180
+  
+  Clear local data:
+    _teachers = []
+    _rooms = []
+    _subjects = []
+    etc.
+  
+  Navigate back to LoginScreen
+
+================================================================================
+6. FIRESTORE INTEGRATION & REAL-TIME LISTENERS
+================================================================================
+
+FIREBASE PROJECT: roomsync-c70c4
+
+FIRESTORE COLLECTIONS:
+
+┌─────────────────────────────────────────────────────────────┐
+│ Collection: teachers                                        │
+├─────────────────────────────────────────────────────────────┤
+│ Document structure:                                         │
+│ {                                                           │
+│   "id": "t1",                                              │
+│   "firstName": "Maria",                                    │
+│   "lastName": "Santos",                                    │
+│   "email": "maria@sass.local",                             │
+│   "employeeId": "2024001",                                 │
+│   "department": "Computer Science",                        │
+│   "expertise": ["Programming", "Databases"],               │
+│   "unitType": "Regular",                                   │
+│   "maxUnits": 12,                                          │
+│   "currentUnits": 9,                                       │
+│   "status": "active",                                      │
+│   "availableDays": ["Monday", "Wednesday", "Friday"],      │
+│   "availableTimeStart": "07:30",                           │
+│   "availableTimeEnd": "17:00",                             │
+│   "sections": ["BSCS 1-A", "BSCS 2-B"],                   │
+│   "yearLevels": ["1st Year", "2nd Year"],                 │
+│   "semester": "1st Semester"                              │
+│ }                                                           │
+│                                                             │
+│ Loading code: app_state.dart, lines 277-310 (_loadTeachersFromFirestore) │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│ Collection: rooms                                           │
+├─────────────────────────────────────────────────────────────┤
+│ Document structure:                                         │
+│ {                                                           │
+│   "id": "r1",                                              │
+│   "name": "1A",                                            │
+│   "floor": 1,                                              │
+│   "capacity": 50,                                          │
+│   "type": "lecture",  (or "laboratory")                    │
+│   "hasProjector": true,                                    │
+│   "hasAirConditioning": true,                              │
+│   "hasComputers": false,                                   │
+│   "status": "available",  (or occupied, maintenance, event) │
+│   "currentSubject": "CS101",                               │
+│   "currentTeacher": "Dr. Maria Santos",                    │
+│   "currentSection": "BSCS 1-A",                            │
+│   "currentTimeStart": "07:30",                             │
+│   "currentTimeEnd": "09:00",                               │
+│   "eventNote": "Faculty Meeting"                           │
+│ }                                                           │
+│                                                             │
+│ Loading code: app_state.dart, lines 312-350 (_loadRoomsFromFirestore) │
+│ Listening code: app_state.dart, lines 352-380 (subscribed)  │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│ Collection: subjects                                        │
+├─────────────────────────────────────────────────────────────┤
+│ Document structure:                                         │
+│ {                                                           │
+│   "id": "s1",                                              │
+│   "code": "CS101",                                         │
+│   "name": "Introduction to Computing",                     │
+│   "description": "Fundamentals...",                        │
+│   "units": 3,                                              │
+│   "hours": 3,                                              │
+│   "type": "lecture",                                       │
+│   "department": "Computer Science",                        │
+│   "requiredExpertise": ["Programming"],                    │
+│   "requiresProjector": true,                               │
+│   "requiresComputers": false,                              │
+│   "minRoomCapacity": 30,                                   │
+│   "yearLevel": "1st Year",                                 │
+│   "semester": "1st Semester",                              │
+│   "sections": ["BSCS 1-A", "BSCS 1-B"]                    │
+│ }                                                           │
+│                                                             │
+│ Loading code: app_state.dart, lines 263-276 (_loadSubjectsFromFirestore) │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│ Collection: schedules                                       │
+├─────────────────────────────────────────────────────────────┤
+│ Document structure:                                         │
+│ {                                                           │
+│   "id": "sch1",                                            │
+│   "teacherId": "t1",                                       │
+│   "subjectId": "s1",                                       │
+│   "roomId": "r1",                                          │
+│   "section": "BSCS 1-A",                                   │
+│   "day": "Monday",                                         │
+│   "timeStart": "07:30",                                    │
+│   "timeEnd": "09:00",                                      │
+│   "semester": "1st Semester",                              │
+│   "academicYear": "2024-2025",                             │
+│   "hasConflict": false,                                    │
+│   "createdAt": Timestamp                                   │
+│ }                                                           │
+│                                                             │
+│ Real-time listening: app_state.dart, lines 159-198         │
+│ (_subscribeToSchedules)                                    │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│ Collection: chat_messages                                   │
+├─────────────────────────────────────────────────────────────┤
+│ Document structure:                                         │
+│ {                                                           │
+│   "id": "msg1",                                            │
+│   "senderId": "t1",                                        │
+│   "senderName": "Dr. Maria Santos",                        │
+│   "message": "Can we reschedule...",                       │
+│   "isFromTeacher": true,                                   │
+│   "timestamp": Timestamp,                                  │
+│   "isResolved": false,                                     │
+│   "adminResponse": null,                                   │
+│   "wasApproved": null                                      │
+│ }                                                           │
+│                                                             │
+│ Real-time listening: app_state.dart, lines 203-230         │
+│ (_subscribeToChatMessages)                                 │
+│                                                             │
+│ Used in:                                                    │
+│   • TeacherChatbotScreen (teacher requests help)            │
+│   • AdminChatbotScreen (admin responds to requests)         │
+│   • NotificationCenter (alerts for pending messages)        │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│ Collection: room_overrides                                  │
+├─────────────────────────────────────────────────────────────┤
+│ Document structure:                                         │
+│ {                                                           │
+│   "id": "override_1",                                      │
+│   "roomId": "r1",                                          │
+│   "roomName": "1A",                                        │
+│   "reason": "Faculty Meeting",                             │
+│   "startDate": "2025-01-15T00:00:00.000Z",                │
+│   "endDate": "2025-01-15T00:00:00.000Z"                   │
+│ }                                                           │
+│                                                             │
+│ Real-time listening: app_state.dart, lines 257-264         │
+│ (_subscribeToRoomOverrides)                                │
+│                                                             │
+│ Impact: Prevents scheduling in that room for date range    │
+│ Used in: Conflict detection, room availability calcs       │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│ Collection: cancelled_classes                               │
+├─────────────────────────────────────────────────────────────┤
+│ Document: Document ID = schedule entry ID                  │
+│                                                             │
+│ Example:                                                    │
+│ {                                                           │
+│   "id": "sch1",                                            │
+│   "reason": "Teacher on leave",                            │
+│   "cancelledAt": Timestamp,                                │
+│   "rescheduledTo": "sch2" (optional)                        │
+│ }                                                           │
+│                                                             │
+│ Real-time listening: app_state.dart, lines 233-242         │
+│ (_subscribeToCancelledClasses)                             │
+│                                                             │
+│ Marks schedule entry as unavailable/cancelled              │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│ Collection: teacher_request_statuses                        │
+├─────────────────────────────────────────────────────────────┤
+│ Document: Document ID = teacher ID                         │
+│                                                             │
+│ Example:                                                    │
+│ {                                                           │
+│   "id": "t1",                                              │
+│   "status": "pending"  (or "approved", "rejected")         │
+│ }                                                           │
+│                                                             │
+│ Real-time listening: app_state.dart, lines 245-256         │
+│ (_subscribeToTeacherRequestStatuses)                       │
+│                                                             │
+│ Tracks requests teachers make to admin                      │
+└─────────────────────────────────────────────────────────────┘
+
+
+REAL-TIME LISTENER PATTERN:
+
+All listeners follow the same pattern:
+
+Reference: app_state.dart (multiple locations)
+
+  void _subscribeTo[Collection]() {
+    // Cancel existing subscription
+    _[collection]Subscription?.cancel();
+    
+    // Create new listener
+    _[collection]Subscription = _db
+        .collection('[firestore_collection]')
+        .snapshots()  ← Listen for changes
+        .listen(
+          (snapshot) {
+            // Update local state
+            _[collection] = snapshot.docs.map(...).toList();
+            
+            // Notify all listeners
+            notifyListeners();
+          },
+          onError: (e) => debugPrint('Stream error: $e'),
+        );
+  }
+
+Example (Chat Messages):
+Reference: app_state.dart, lines 203-230
+
+  void _subscribeToChatMessages() {
+    _chatSubscription?.cancel();  // Cancel old subscription
+    
+    _chatSubscription = _db
+        .collection('chat_messages')
+        .orderBy('timestamp', descending: true)  ← Newest first
+        .snapshots()
+        .listen(
+          (snapshot) {
+            _chatMessages = snapshot.docs.map((doc) {
+              final d = doc.data();
+              return ChatMessage(
+                id: doc.id,
+                senderId: d['senderId'] ?? '',
+                senderName: d['senderName'] ?? '',
+                message: d['message'] ?? '',
+                isFromTeacher: d['isFromTeacher'] ?? true,
+                timestamp: (d['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
+                isResolved: d['isResolved'] ?? false,
+                adminResponse: d['adminResponse'],
+                wasApproved: d['wasApproved'],
+              );
+            }).toList();
+            notifyListeners();  ← Rebuilds all listeners
+          },
+          onError: (e) => debugPrint('Chat stream error: $e'),
+        );
+  }
+
+WHY REAL-TIME MATTERS:
+
+Scenario: Teacher sends chat message from phone
+  1. Message written to Firestore on teacher's phone
+  2. Admin's computer INSTANTLY receives notification (via listener)
+  3. Admin's UI rebuilds with new message
+  4. No manual refresh needed
+
+This creates seamless two-way communication.
+
+
+MIXED DATA SOURCES (MockData + Firestore):
+
+The app uses a hybrid approach:
+
+Reference: app_state.dart, lines 118-138
+
+  Initialization:
+    1. Load MockData (instant, fallback data)
+       └─ Teachers, rooms, subjects, sections, schedules
+    
+    2. Call notifyListeners() → UI appears immediately (not empty)
+    
+    3. Load from Firestore (background, overlays mock data)
+       └─ Queries might be slow, but UI already visible
+    
+    4. Chat messages: Firestore ONLY (no MockData)
+       └─ Real conversations, must be persistent
+
+This pattern:
+  ✓ Provides instant UI feedback
+  ✓ Falls back gracefully if Firebase is offline
+  ✓ Updates automatically when Firebase data arrives
+  ✓ Never shows empty screens to users
+
+================================================================================
+7. CONFLICT DETECTION & RESOLUTION
+================================================================================
+
+CONFLICT TYPES:
+
+Reference: schedule.dart, lines 37-43
+
+  enum ConflictType {
+    doubleBookedRoom,          → Same room, overlapping times
+    teacherDoubleScheduled,    → Teacher in two places
+    equipmentMismatch,         → Room lacks required equipment
+    roomCapacityMismatch,      → Room too small for enrollment
+    roomTypeMismatch,          → Need lab, room is lecture (or vice versa)
+  }
+
+
+CONFLICT DETECTION ALGORITHM:
+
+Reference: app_state.dart, lines 400-520 (_detectConflicts)
+
+Algorithm pseudocode:
+
+  _detectConflicts() {
+    conflicts = []
+    
+    for each schedule entry e1:
+      
+      // Check 1: Double-booked room
+      for each schedule entry e2 (where e2 != e1):
+        if e1.room == e2.room AND e1.day == e2.day AND times overlap:
+          conflicts.add(ScheduleConflict(
+            type: doubleBookedRoom,
+            entry1: e1,
+            entry2: e2,
+            description: "Room ${e1.room} booked twice"
+          ))
+      
+      // Check 2: Teacher double-scheduled
+      for each schedule entry e2 (where e2 != e1):
+        if e1.teacher == e2.teacher AND times overlap:
+          conflicts.add(ScheduleConflict(
+            type: teacherDoubleScheduled,
+            entry1: e1,
+            entry2: e2,
+            description: "Teacher assigned to two classes"
+          ))
+      
+      // Check 3: Equipment mismatch
+      if e1.subject.requiresProjector AND !e1.room.hasProjector:
+        conflicts.add(ScheduleConflict(
+          type: equipmentMismatch,
+          description: "Room lacks projector"
+        ))
+      
+      // Check 4: Room capacity mismatch
+      section_size = enrollment[e1.section]
+      if section_size > e1.room.capacity:
+        conflicts.add(ScheduleConflict(
+          type: roomCapacityMismatch,
+          description: "Room capacity too small"
+        ))
+      
+      // Check 5: Room type mismatch
+      if e1.subject.type == laboratory AND e1.room.type == lecture:
+        conflicts.add(ScheduleConflict(
+          type: roomTypeMismatch,
+          description: "Need lab, room is lecture"
+        ))
+      
+      // Check 6: Room override
+      for each override:
+        if override.coversDate(e1.day):
+          conflicts.add(ScheduleConflict(
+            type: roomBlockedByOverride,
+            description: "Room blocked: " + override.reason
+          ))
+    
+    _conflicts = conflicts
+    notifyListeners()
+  }
+
+
+CONFLICT DISPLAY:
+
+ConflictDetectionScreen shows:
+Reference: conflict_detection_screen.dart, lines 30-100
+
+  ┌───────────────────────────────────┐
+  │ Active Conflicts (5)              │
+  ├───────────────────────────────────┤
+  │ ☐ Double-booked Room              │
+  │   Room 1A used for two classes    │
+  │   [Resolve Conflict]              │
+  │                                   │
+  │ ☐ Teacher Double Scheduled        │
+  │   Dr. Santos in two places        │
+  │   [Resolve Conflict]              │
+  │                                   │
+  │ ☐ Room Capacity Mismatch          │
+  │   Section BSCS 1-A (45 students)  │
+  │   Room 1A capacity: 40            │
+  │   [Resolve Conflict]              │
+  └───────────────────────────────────┘
+  
+  ┌───────────────────────────────────┐
+  │ Resolved (3)                      │
+  ├───────────────────────────────────┤
+  │ ✓ Room Capacity Mismatch (Jan 15) │
+  │   Moved to Room 1B                │
+  └───────────────────────────────────┘
+
+
+CONFLICT RESOLUTION FLOW:
+
+Reference: conflict_resolution_screen.dart
+
+Step 1: Admin views conflict
+  - Sees both conflicting schedule entries
+  - Sees detail about why there's a conflict
+
+Step 2: Admin chooses resolution:
+  a) Move Entry 1 to different room
+  b) Move Entry 2 to different room
+  c) Move Entry 1 to different time slot
+  d) Move Entry 2 to different time slot
+  e) Cancel Entry 1 or Entry 2
+  f) Swap room/time with another class
+
+Step 3: Admin applies resolution
+  - Update Firestore with new schedule
+  
+Step 4: AppState detects change
+  - Real-time listener fires
+  - Re-runs _detectConflicts()
+  
+Step 5: Conflict disappears
+  - conflict.isResolved = true
+  - No longer shown in "Active Conflicts"
+
+Step 6: Notifications sent
+  - Teachers affected by change receive chat notification
+  - See reason for reschedule
+
+
+EXAMPLE RESOLUTION:
+
+CONFLICT: Room 1A double-booked on Monday 8-9 AM
+  Entry 1: CS101 Dr. Santos
+  Entry 2: CS102 Prof. dela Cruz
+
+RESOLUTION OPTIONS:
+
+Option A: Move Entry 1 to Room 1B
+  - Update: Entry 1.room = Room 1B
+  - Check: Room 1B available? Yes
+  - Check: Room 1B has projector? Yes
+  - Firestore: Update schedule doc
+  - Chat notification: "Your class moved from 1A to 1B"
+  
+  Result: Conflict resolved ✓
+
+Option B: Move Entry 2 to different time
+  - Update: Entry 2.timeStart = "09:00", Entry 2.timeEnd = "10:30"
+  - Check: Is Prof. dela Cruz available? Yes (teacherAvailability)
+  - Check: Overlaps with other classes? No
+  - Firestore: Update schedule doc
+  - Chat notification: "Your class time changed from 8-9 AM to 9-10:30 AM"
+  
+  Result: Conflict resolved ✓
+
+================================================================================
+8. COMPONENTS BREAKDOWN WITH EXAMPLES
+================================================================================
+
+KEY OVERRIDE IMPLEMENTATIONS:
+
+A) @override Methods in Screens:
+
+EXAMPLE 1: initState override (initialization)
+Reference: login_screen.dart, lines 39-68
+
+  class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin {
+    @override
+    void initState() {
+      super.initState();  ← Call parent first
+      
+      // Create animation controllers
+      _fadeCtrl = AnimationController(...);
+      _slideCtrl = AnimationController(...);
+      
+      // Set up delayed animations
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted) {
+          _fadeCtrl.forward();
+          _slideCtrl.forward();
+        }
+      });
+    }
+  }
+
+WHY IT MATTERS:
+  • Runs once when widget is created
+  • Initializes animation controllers
+  • Sets up timers and listeners
+  • Without super.initState(), the state system breaks
+
+
+EXAMPLE 2: build override
+Reference: admin_shell.dart, lines 58-85
+
+  @override
+  Widget build(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width;
+    
+    // Wide layout: side rail + content
+    if (width >= 720) {
+      return Scaffold(
+        body: Row(
+          children: [
+            _SideRail(...),
+            Expanded(child: IndexedStack(...)),
+          ],
+        ),
+      );
+    }
+    
+    // Mobile layout: bottom nav
+    return Scaffold(
+      body: IndexedStack(...),
+      bottomNavigationBar: _BottomNav(...),
+    );
+  }
+
+WHY IT MATTERS:
+  • Runs every time widget rebuilds
+  • Detects screen size
+  • Returns different UI based on breakpoint
+  • Enables responsive design (same widget, different layouts)
+
+
+EXAMPLE 3: dispose override
+Reference: login_screen.dart, lines 72-79
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    _fadeCtrl.dispose();
+    _slideCtrl.dispose();
+    _glowCtrl.dispose();
+    _ringCtrl.dispose();
+    super.dispose();  ← Call parent last
+  }
+
+WHY IT MATTERS:
+  • Runs when widget is removed from tree
+  • Frees up memory (controllers, listeners, streams)
+  • Prevents memory leaks
+  • Without dispose(), animations keep running after widget destroyed
+
+
+EXAMPLE 4: ChangeNotifier override (notifyListeners)
+Reference: app_state.dart, lines 107-115 (dispose method)
+              and throughout (notifyListeners calls)
+
+  class AppState extends ChangeNotifier {
+    @override
+    void dispose() {
+      _chatSubscription?.cancel();
+      _scheduleSubscription?.cancel();
+      _cancelledSubscription?.cancel();
+      _statusSubscription?.cancel();
+      _overrideSubscription?.cancel();
+      super.dispose();
+    }
+  }
+  
+  // Called after any state change:
+  notifyListeners();
+
+WHY IT MATTERS:
+  • ChangeNotifier.dispose() cancels all Firestore subscriptions
+  • Prevents memory leaks from listening to collections
+  • notifyListeners() tells Consumer widgets to rebuild
+
+
+B) Widget Type Overrides:
+
+EXAMPLE: ConsumerWidget vs Consumer
+Reference: conflict_detection_screen.dart, lines 10-15
+
+  class ConflictDetectionScreen extends StatelessWidget {  ← Not a Consumer
+    @override
+    Widget build(BuildContext context) {
+      return Consumer<AppState>(  ← Uses Consumer to access state
+        builder: (context, state, _) {
+          final active = state.conflicts.where((c) => !c.isResolved).toList();
+          ...
+        },
+      );
+    }
+  }
+
+WHY:
+  • Screen is StatelessWidget (simple, no internal state)
+  • But it needs AppState data
+  • Consumer provides that without making whole screen rebuild-heavy
+
+
+C) Model Class Overrides (copyWith pattern):
+
+EXAMPLE: Teacher.copyWith
+Reference: teacher.dart, lines 60-90
+
+  Teacher copyWith({
+    String? id,
+    String? firstName,
+    String? lastName,
+    // ... all fields as optional parameters
+  }) {
+    return Teacher(
+      id: id ?? this.id,              ← Use new value if provided, else keep
+      firstName: firstName ?? this.firstName,
+      lastName: lastName ?? this.lastName,
+      // ... all fields
+    );
+  }
+
+USAGE:
+  Original teacher: Maria Santos (email: maria@sass.local)
+  
+  Updated teacher: teacher.copyWith(email: 'maria.santos@school.edu')
+  
+  Result: New Teacher object with email updated, everything else preserved
+
+WHY IT MATTERS:
+  • Immutable data patterns (important for state management)
+  • Create new object instead of modifying original
+  • Firestore updates use this pattern
+  • Prevents accidental mutations
+
+
+D) Stream Override (subscribeToXXX pattern):
+
+EXAMPLE: _subscribeToChatMessages
+Reference: app_state.dart, lines 203-230
+
+  void _subscribeToChatMessages() {
+    _chatSubscription?.cancel();  ← Cancel old stream
+    
+    _chatSubscription = _db
+        .collection('chat_messages')
+        .orderBy('timestamp', descending: true)
+        .snapshots()                    ← Listen for changes
+        .listen(
+          (snapshot) {
+            // Process new data
+            _chatMessages = snapshot.docs.map(...).toList();
+            notifyListeners();  ← Tell listeners to rebuild
+          },
+          onError: (e) => debugPrint('Chat stream error: $e'),
+        );
+  }
+
+WHY IT MATTERS:
+  • Creates persistent connection to Firestore
+  • Automatically called when state initializes
+  • Updates _chatMessages whenever document changes
+  • Multiple subscriptions run simultaneously
+
+
+================================================================================
+9. KEY DESIGN PATTERNS
+================================================================================
+
+PATTERN 1: Provider Pattern (State Management)
+
+Location: main.dart, lines 18-26
+
+  class SmartAcademicApp extends StatelessWidget {
+    @override
+    Widget build(BuildContext context) {
+      return ChangeNotifierProvider(
+        create: (_) => AppState(),  ← Create single instance
+        child: MaterialApp(
+          home: const SplashScreen(),
+        ),
+      );
+    }
+  }
+
+Usage in widgets:
+  // Read-only:
+  final state = context.read<AppState>();
+  
+  // Listen to changes:
+  Consumer<AppState>(
+    builder: (context, state, _) {
+      return Text('${state.rooms.length} rooms');
+    },
+  );
+
+Benefits:
+  ✓ Single source of truth
+  ✓ No prop drilling
+  ✓ Automatic rebuilds on state change
+  ✓ Easy to test
+
+
+PATTERN 2: Responsive Layout Pattern
+
+Location: responsive_layout.dart
+
+  class Responsive {
+    static bool isMobile(BuildContext context) =>
+        MediaQuery.sizeOf(context).width < 600;
+    
+    static bool isWide(BuildContext context) =>
+        MediaQuery.sizeOf(context).width >= 900;
+  }
+
+Usage:
+  if (Responsive.isMobile(context)) {
+    return MobileLayout();
+  } else {
+    return DesktopLayout();
+  }
+
+Example in AdminShell:
+Reference: admin_shell.dart, lines 64-85
+  
+  if (width >= 720) {
+    return SideNavigationLayout();  ← Desktop
+  }
+  return BottomNavigationLayout();  ← Mobile
+
+
+PATTERN 3: Real-time Data Pattern
+
+Location: app_state.dart
+
+  // 1. Initialize listeners in constructor
+  AppState() { _loadData(); }
+  
+  // 2. Create persistent subscriptions
+  _chatSubscription = _db.collection('chat_messages').snapshots().listen(...);
+  
+  // 3. Update local state
+  _chatMessages = snapshot.docs.map(...).toList();
+  
+  // 4. Notify widgets
+  notifyListeners();
+  
+  // 5. Clean up on dispose
+  _chatSubscription?.cancel();
+
+Benefits:
+  ✓ Data always in sync
+  ✓ No manual refresh needed
+  ✓ Instant updates across devices
+
+
+PATTERN 4: Immutable Data Classes
+
+Location: teacher.dart, subject.dart, room.dart
+
+  class Teacher {
+    final String id;
+    final String firstName;
+    final String lastName;
+    // ... all fields are final
+    
+    Teacher({
+      required this.id,
+      required this.firstName,
+      // ... all required
+    });
+    
+    Teacher copyWith({...}) {
+      // Return new instance with updated fields
+    }
+  }
+
+Benefits:
+  ✓ Thread-safe
+  ✓ Predictable behavior
+  ✓ Easy to debug state changes
+  ✓ Works well with state management
+
+
+PATTERN 5: Enum for Status
+
+Location: room.dart, lines 1-2
+
+  enum RoomStatus { available, occupied, maintenance, event }
+  enum RoomType { lecture, laboratory }
+  enum TeacherStatus { active, inactive, onLeave }
+
+Usage:
+  if (room.status == RoomStatus.available) { ... }
+  
+  String get statusLabel {
+    switch (status) {
+      case RoomStatus.available: return 'Available';
+      case RoomStatus.occupied: return 'Occupied';
+      case RoomStatus.maintenance: return 'Maintenance';
+      case RoomStatus.event: return 'Event';
+    }
+  }
+
+Benefits:
+  ✓ Type-safe (can't misspell status)
+  ✓ Compiler catches invalid values
+  ✓ Easy to iterate: RoomStatus.values
+
+
+PATTERN 6: Mix-in for Animation Controllers
+
+Location: login_screen.dart, line 18
+
+  class _LoginScreenState extends State<LoginScreen> 
+      with TickerProviderStateMixin {
+    // Can now use vsync: this in AnimationController
+  }
+
+Benefits:
+  ✓ Required for smooth animations
+  ✓ Provides vsync property
+  ✓ Manages animation frame rate
+
+
+PATTERN 7: Form Validation
+
+Location: login_screen.dart, lines 19-21
+
+  final _formKey = GlobalKey<FormState>();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+
+Usage:
+  Form(
+    key: _formKey,
+    child: Column(
+      children: [
+        TextFormField(
+          controller: _emailController,
+          validator: (value) {
+            if (value?.isEmpty ?? true) return 'Required';
+            if (!value!.contains('@')) return 'Invalid email';
+            return null;  // Valid
+          },
+        ),
+      ],
+    ),
+  )
+  
+  // To validate:
+  if (_formKey.currentState!.validate()) {
+    // Proceed with login
+  }
+
+
+PATTERN 8: Computed Properties
+
+Location: app_state.dart, lines 89-94
+
+  int get availableRooms => 
+      _rooms.where((r) => r.status == RoomStatus.available).length;
+  
+  int get activeConflicts => 
+      _conflicts.where((c) => !c.isResolved).length;
+  
+  double get occupancyRate => 
+      _rooms.isEmpty ? 0 : occupiedRooms / _rooms.length;
+
+Benefits:
+  ✓ Recalculated on access
+  ✓ Always up-to-date
+  ✓ Used in dashboards for stats
+
+
+================================================================================
+10. FIREBASE RULES
+================================================================================
+
+Current Rules (as provided):
+
+  rules_version = '2';
+  service cloud.firestore {
+    match /databases/{database}/documents {
+      match /{document=**} {
+        allow read, write: if request.time < timestamp.date(2027, 1, 1);
+      }
+    }
+  }
+
+STATUS: INSECURE (for testing only!)
+
+WHAT IT MEANS:
+  ✓ Any authenticated user can READ any document
+  ✓ Any authenticated user can WRITE any document
+  ✓ Permission expires on 2027-01-01
+  ✓ No role-based access control (RBAC)
+
+RECOMMENDED PRODUCTION RULES:
+
+  rules_version = '2';
+  service cloud.firestore {
+    match /databases/{database}/documents {
+      
+      // Teachers collection
+      match /teachers/{teacherId} {
+        allow read: if request.auth != null;
+        allow write: if 
+          request.auth.uid == teacherId ||
+          isAdmin(request.auth.uid);
+      }
+      
+      // Rooms collection
+      match /rooms/{roomId} {
+        allow read: if request.auth != null;
+        allow write: if isAdmin(request.auth.uid);
+      }
+      
+      // Subjects collection
+      match /subjects/{subjectId} {
+        allow read: if request.auth != null;
+        allow write: if isAdmin(request.auth.uid);
+      }
+      
+      // Schedules collection
+      match /schedules/{scheduleId} {
+        allow read: if request.auth != null;
+        allow write: if isAdmin(request.auth.uid);
+      }
+      
+      // Chat messages
+      match /chat_messages/{messageId} {
+        allow read: if request.auth != null;
+        allow create: if 
+          request.auth.uid == resource.data.senderId;
+        allow update: if 
+          request.auth.uid == resource.data.senderId ||
+          isAdmin(request.auth.uid);
+      }
+      
+      // Room overrides
+      match /room_overrides/{overrideId} {
+        allow read: if request.auth != null;
+        allow write: if isAdmin(request.auth.uid);
+      }
+      
+      // Helper function
+      function isAdmin(userId) {
+        return get(/databases/$(database)/documents/teachers/$(userId))
+          .data.isAdmin == true;
+      }
+    }
+  }
+
+FUTURE IMPROVEMENTS:
+  • Implement proper authentication (OAuth2)
+  • Use role-based access (Admin, Teacher, Registrar)
+  • Add field-level validation
+  • Implement audit logging
+  • Rate limiting on chat/request APIs
+
+================================================================================
+11. QUICK START GUIDE FOR DEVELOPERS
+================================================================================
+
+SETUP:
+
+1. Install Flutter
+   $ flutter pub get
+
+2. Configure Firebase
+   • Download google-services.json (Android)
+   • Place in: android/app/
+
+3. Run app:
+   $ flutter run
+
+4. Test accounts:
+   Admin:     email: admin, password: admin123
+   Teacher 1: email: maria@sass.local, password: password123
+   Teacher 2: email: juan@sass.local, password: password123
+
+
+COMMON TASKS:
+
+Add a new screen:
+  1. Create file: lib/screens/new_screen.dart
+  2. Import in main.dart
+  3. Add route to AdminShell or TeacherDashboard
+  4. Reference: admin_shell.dart, lines 36-52
+
+Access app state:
+  Consumer<AppState>(
+    builder: (context, state, _) {
+      return Text('Teachers: ${state.teachers.length}');
+    },
+  )
+
+Update Firestore:
+  await FirebaseFirestore.instance
+      .collection('teachers')
+      .doc(teacherId)
+      .update({'department': 'New Department'});
+  
+  // AppState listener automatically updates UI
+
+Create a new conflict type:
+  1. Add to enum in schedule.dart
+  2. Add case to _detectConflicts() in app_state.dart
+  3. Add UI to ConflictDetectionScreen
+  4. Reference: schedule.dart, lines 37-43
+
+================================================================================
+12. GLOSSARY
+================================================================================
+
+AppState
+  Central state management provider. Holds all app data and provides
+  read/write access to all screens. Reference: app_state.dart
+
+ChangeNotifier
+  Base class from Flutter that allows notifying listeners of changes.
+  Used by AppState to trigger rebuilds.
+
+Consumer
+  Widget that listens to Provider and rebuilds when data changes.
+  Reference: conflict_detection_screen.dart, line 10
+
+Override
+  In Dart, method override using @override annotation. In this system,
+  also refers to RoomOverride (time-based room blocks).
+
+RoomOverride
+  A date-range block on a room. Prevents scheduling during that period.
+  Example: Faculty meetings, maintenance. Reference: app_state.dart, line 14
+
+ScheduleConflict
+  Detected problem in schedule (double booking, capacity mismatch, etc.).
+  Reference: schedule.dart, line 48
+
+Real-time Listener
+  Persistent connection to Firestore that updates app instantly when
+  data changes. Reference: app_state.dart, lines 159-230
+
+Firestore
+  Cloud database by Google. Stores all system data (teachers, rooms,
+  schedules, etc.). Enables real-time sync.
+
+Firebase Authentication
+  Google's auth service. Used for login/logout. Reference: firebase_service.dart
+
+Mock Data
+  Sample data used when Firestore is offline. Provides fallback.
+  Reference: mock_data.dart
+
+Responsive Layout
+  UI that adapts to different screen sizes (mobile, tablet, desktop).
+  Reference: responsive_layout.dart, admin_shell.dart
+
+Immutable
+  Object that cannot be changed after creation. Good for state.
+  Teacher.copyWith() creates new immutable Teacher. Reference: teacher.dart
+
+================================================================================
+END OF INSTRUCTION
+================================================================================
+
+For support or questions, refer to:
+  • Firebase Docs: https://firebase.google.com/docs
+  • Flutter Docs: https://flutter.dev/docs
+  • Provider Package: https://pub.dev/packages/provider
+  • Firestore Best Practices: https://firebase.google.com/docs/firestore/best-practices
+
+Last Updated: 2025-04-26
+System Version: 1.0.0
+Build: 100

@@ -1,0 +1,1036 @@
+================================================================================
+  DETAILED CODE BREAKDOWN — LINE-BY-LINE EXPLANATIONS
+================================================================================
+
+This document provides in-depth explanations of how the code works,
+with specific file names and line numbers.
+
+================================================================================
+PART 1: APPLICATION STARTUP
+================================================================================
+
+FILE: lib/main.dart
+
+Lines 1-7: Imports
+  import 'package:flutter/material.dart';
+  import 'package:flutter/services.dart';
+  import 'package:provider/provider.dart';
+  import 'package:firebase_core/firebase_core.dart';
+  import 'firebase_options.dart';
+  import 'providers/app_state.dart';
+  import 'screens/splash_screen.dart';
+  
+  What: Load required packages
+  Why: Firebase for backend, Provider for state, Material for UI
+  Impact: Enables all app functionality
+
+Lines 9-14: main() Function
+  Future<void> main() async {
+    WidgetsFlutterBinding.ensureInitialized();
+    
+  What: Entry point of the application
+  Why: Runs before anything else
+  Line 10: WidgetsFlutterBinding.ensureInitialized()
+    → Prepares Flutter for Firebase initialization
+    → Without this, Firebase.initializeApp() crashes
+
+Line 11: await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  What: Connects to Firebase
+  Why: Required to use Firestore, Authentication
+  How: Reads firebase_options.dart to get API keys
+  Impact: App can now communicate with Firebase servers
+
+Lines 12-13: System UI Configuration
+  SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp, DeviceOrientation.portraitDown]);
+  
+  What: Forces portrait orientation only
+  Why: App designed for portrait (phones, not tablets sideways)
+  Impact: Prevents rotation issues, cleaner UX
+
+Lines 14-15: Status Bar Styling
+  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent, 
+    statusBarIconBrightness: Brightness.light
+  ));
+  
+  What: Makes status bar transparent with light icons
+  Why: Allows gradient to extend behind status bar (nicer aesthetics)
+  Impact: Status bar blends with app design
+
+Line 16: runApp(const SmartAcademicApp());
+  What: Starts the app by rendering SmartAcademicApp widget
+  Why: Entry point for Flutter widget tree
+  Impact: Everything else runs from here
+
+Lines 19-29: SmartAcademicApp Widget
+  class SmartAcademicApp extends StatelessWidget {
+    const SmartAcademicApp({super.key});
+    
+    @override
+    Widget build(BuildContext context) {
+      return ChangeNotifierProvider(
+        create: (_) => AppState(),
+        child: MaterialApp(...)
+      );
+    }
+  }
+  
+  Line 25: ChangeNotifierProvider(create: (_) => AppState())
+    What: Creates AppState and makes it available to all widgets
+    Why: Provider pattern - single source of truth
+    How: Wraps MaterialApp, so all children can access AppState
+    Impact: state.read<AppState>() works anywhere
+
+  Line 26: child: MaterialApp(...)
+    What: Defines the app's Material Design theme and home screen
+    Line 27: title: 'Smart Academic Scheduling'
+      → What appears in app switcher
+    Line 28: theme: AppTheme.lightTheme
+      → Uses custom colors, fonts from app_theme.dart
+    Line 29: home: const SplashScreen()
+      → First screen shown to user
+    Line 30: builder: (context, child) => MediaQuery(...)
+      → Prevents text scaling (keeps design consistent)
+
+================================================================================
+PART 2: SPLASH SCREEN & LOGIN FLOW
+================================================================================
+
+FILE: lib/screens/splash_screen.dart
+
+Lines 8-30: initState() - Animation Setup
+
+Line 8: @override
+Line 9: void initState() {
+  What: Runs once when widget created
+  Why: Initialize animation controllers before first frame
+  
+Lines 15-23: Create animation controllers
+  _bgFadeCtrl = AnimationController(
+    vsync: this,                              ← Required for smooth animation
+    duration: const Duration(milliseconds: 700)
+  );
+  
+  What: Creates controller for background fade
+  Duration: 700ms total time
+  vsync: Ties animation to frame rate (prevents jank)
+
+Lines 25-35: Create Logo Scale Animation
+  _logoScaleCtrl = AnimationController(
+    vsync: this, 
+    duration: const Duration(milliseconds: 900)
+  );
+  _logoScaleAnim = Tween<double>(begin: 0.0, end: 1.0).animate(
+    CurvedAnimation(parent: _logoScaleCtrl, curve: Curves.elasticOut)
+  );
+  
+  What: Logo starts at scale 0 (invisible), ends at scale 1 (normal)
+  Duration: 900ms
+  Curve: elasticOut (bouncy animation, not linear)
+  Result: Logo pops in with elastic bounce
+
+Lines 60-80: _runSequence() - Timing Orchestration
+  Future<void> _runSequence() async {
+    _bgFadeCtrl.forward();                            ← Start fade
+    await Future.delayed(const Duration(milliseconds: 150));
+    _logoScaleCtrl.forward();                         ← Then scale logo
+    _logoRotateCtrl.forward();                        ← Then rotate
+    await Future.delayed(const Duration(milliseconds: 1800));
+    if (!mounted) return;                             ← Check still mounted
+    _goToChatbot();                                   ← Navigate away
+  }
+  
+  What: Orchestrates animation sequence with timing
+  Line 61: Start background fade immediately
+  Line 62-63: Wait 150ms, then start logo animations
+  Line 65-66: Wait 1800ms more (total 1950ms before leaving)
+  Line 67: !mounted check prevents navigation crash if user leaves early
+  Line 68: Navigate to next screen
+  
+  Timeline:
+    0ms:    Fade starts (700ms duration)
+    150ms:  Logo scale & rotate start (900ms duration)
+    1950ms: Navigate away
+    
+  User sees: Fade in → pause 150ms → logo pops in with bounce → hold 1.8s → navigate
+
+Lines 99-160: build() - UI Rendering
+  
+  Line 107: @override
+  Line 108: Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: FadeTransition(
+        opacity: _bgFadeAnim,
+        
+  What: Applies fade animation to background
+  FadeTransition: Automatically animates opacity from 0 to 1
+  _bgFadeAnim: Animation object from initState line 29
+  
+  Lines 112-119: Gradient Background
+    Container(
+      decoration: const BoxDecoration(
+        gradient: RadialGradient(
+          center: Alignment.center,
+          radius: 1.3,
+          colors: [Color(0xFF2B0000), Color(0xFF1C1C1C), Color(0xFF080808)],
+          stops: [0.0, 0.5, 1.0],
+        ),
+      ),
+    )
+    
+    What: Dark red gradient radiating from center
+    Color 1 (0xFF2B0000): Dark red (30% opacity)
+    Color 2 (0xFF1C1C1C): Dark gray (50%)
+    Color 3 (0xFF080808): Almost black (edges)
+    Effect: Professional dark theme with red branding
+
+  Lines 140-160: Spinning Rings
+    Transform.rotate(
+      angle: _ringAnim.value * 2 * 3.14159265,
+      child: CustomPaint(
+        size: const Size(230, 230),
+        painter: _SplashRingPainter(...)
+      ),
+    )
+    
+    What: Outer ring that rotates
+    angle: _ringAnim.value goes 0 to 1 → 0 to 2π radians (full rotation)
+    CustomPaint: Low-level drawing (better performance than Image)
+    Result: Spinning ring effect
+
+Lines 195-240: Dispose
+  @override
+  void dispose() {
+    _bgFadeCtrl.dispose();
+    _logoScaleCtrl.dispose();
+    _logoRotateCtrl.dispose();
+    _pulseCtrl.dispose();
+    _glowCtrl.dispose();
+    _ringCtrl.dispose();
+    super.dispose();
+  }
+  
+  What: Clean up all animation controllers
+  Why: Prevent memory leaks, stop animations
+  When: Called when SplashScreen is removed from widget tree
+  Important: super.dispose() MUST be last
+
+
+FILE: lib/screens/login_screen.dart
+
+Lines 18-30: State Management Variables
+
+Line 19: final _formKey = GlobalKey<FormState>();
+  What: Reference to form validation state
+  Why: Validate all form fields at once
+  Usage: if (_formKey.currentState!.validate()) { ... }
+
+Lines 20-21: Text Controllers
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  
+  What: Read user input from text fields
+  Usage: _emailController.text gets the email
+  Important: Must call .dispose() in line 72-74
+
+Lines 23-26: State Variables
+  bool _isPasswordVisible = false;          ← Show/hide password
+  bool _isAdmin = false;                    ← Toggle admin/teacher mode
+  bool _isLoading = false;                  ← Show loading spinner
+  String? _errorMessage;                    ← Show error to user
+
+Lines 39-68: initState() - Setup Animations
+
+  Lines 42-50: Create fade & slide animations
+    _fadeCtrl = AnimationController(vsync: this, duration: Duration(milliseconds: 700));
+    _slideAnim = Tween<Offset>(
+      begin: const Offset(0, 0.12),  ← Start 12% down
+      end: Offset.zero,              ← End at normal position
+    ).animate(CurvedAnimation(...));
+    
+    What: Form slides up from bottom as it fades in
+    Offset(0, 0.12): Slide 12% of screen height down
+    Offset.zero: Normal position
+    Effect: Smooth entrance animation
+
+  Lines 63-68: Delayed Animation Start
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (mounted) {
+        _fadeCtrl.forward();
+        _slideCtrl.forward();
+      }
+    });
+    
+    What: Wait 100ms, then start animations
+    Why: Smoother perceived performance (not everything at once)
+    if (mounted): Safety check - widget might be destroyed already
+
+Lines 86-114: _login() Method - Main Authentication
+
+Line 86: Future<void> _login() async {
+  What: Called when user taps "Sign In" button
+  Why: Authenticate user and route to appropriate home screen
+
+Lines 87-90: Clear Previous State
+  _safeSetState(() {
+    _isLoading = false;
+    _errorMessage = null;
+  });
+  
+  What: Reset from previous login attempt
+  Why: Clear old errors, stop loading spinner
+  _safeSetState: Custom wrapper that checks if (mounted)
+
+Lines 92-93: Validate Form
+  if (!_formKey.currentState!.validate()) return;
+  
+  What: Check that email/password are filled and valid format
+  Why: Don't waste Firebase API calls on invalid input
+  validate(): Calls validator on each TextFormField
+  Example validators in build(): lines 300-320
+
+Lines 94-104: Execute Login with Timeout
+  try {
+    await (_isAdmin ? _loginAdmin() : _loginTeacher())
+        .timeout(
+          const Duration(seconds: 8),
+          onTimeout: () {
+            throw Exception(
+              'Request timed out. Check your connection and try again.'
+            );
+          },
+        );
+  }
+  
+  What: Call appropriate login function
+  Line 97: Ternary operator chooses _loginAdmin() or _loginTeacher()
+  Line 98-103: Timeout wrapper - if no response after 8 seconds, throw error
+  Why: Network might be slow, prevent hanging UI
+
+Lines 105-110: Error Handling
+  on FirebaseAuthException catch (e) {
+    _safeSetState(() => _errorMessage = _friendlyAuthError(e.code));
+  } catch (e) {
+    _safeSetState(() {
+      _errorMessage = e.toString().replaceFirst('Exception: ', '');
+    });
+  }
+  
+  What: Catch and display errors
+  Line 105: Firebase-specific errors (user-not-found, wrong-password, etc.)
+  Line 107: Any other error
+  _friendlyAuthError(): Line 330-350, converts codes to messages
+  Examples:
+    'user-not-found' → "No account found for this email."
+    'wrong-password' → "Incorrect password."
+
+Lines 116-160: _loginAdmin() - Admin Authentication
+
+Line 117-118: Get Input
+  final email = _emailController.text.trim();
+  final password = _passwordController.text.trim();
+  
+  What: Extract email & password from text fields
+  .trim(): Remove leading/trailing spaces
+  Why: Handle user mistakes (space at beginning)
+
+Lines 120-130: Hardcoded Bypass (For Testing)
+  if (email == 'admin' && password == 'admin123') {
+    final adminTeacher = Teacher(
+      id: 'admin',
+      firstName: 'System',
+      lastName: 'Administrator',
+      email: 'admin@sass.local',
+      employeeId: 'ADMIN',
+      department: 'Administration',
+      expertise: ['All'],
+      unitType: 'Admin',
+      maxUnits: 0,
+      currentUnits: 0,
+      status: TeacherStatus.active,
+      availableDays: [...],
+      availableTimeStart: '00:00',
+      availableTimeEnd: '23:59',
+      assignedSubjects: [],
+      password: 'admin123',
+    );
+    
+    context.read<AppState>().login(adminTeacher, isAdmin: true);
+    Navigator.pushReplacementNamed(context, '/admin');
+    return;
+  }
+  
+  What: Quick-access admin account for development
+  Why: Avoid Firebase every time during testing
+  login(teacher, isAdmin: true): Line in app_state.dart
+    → Sets AppState._isAdmin = true
+    → Sets AppState._currentTeacher = adminTeacher
+    → Triggers AppState.notifyListeners()
+
+Lines 146-175: Firebase Admin Authentication
+  if (email.isEmpty || password.isEmpty) {
+    throw Exception('Email and password are required.');
+  }
+  
+  final adminDoc = await _db
+      .collection('teachers')
+      .where('isAdmin', isEqualTo: true)
+      .where('email', isEqualTo: email)
+      .get();
+  
+  What: Query Firestore for admin with this email
+  Collection: 'teachers'
+  Filters:
+    1. isAdmin == true (only admins)
+    2. email == [entered email] (matching email)
+  Result: Either 1 document or 0 documents
+
+Lines 156-175: Verify and Navigate
+  if (adminDoc.docs.isEmpty) {
+    throw Exception('No admin account found.');
+  }
+  
+  final adminData = adminDoc.docs.first.data();
+  
+  if (adminData['password'] != password) {
+    throw Exception('Incorrect password.');
+  }
+  
+  final admin = Teacher.fromMap(adminData);
+  context.read<AppState>().login(admin, isAdmin: true);
+  
+  Navigator.pushReplacementNamed(context, '/admin');
+  
+  What: Verify credentials and log in
+  Line 156-158: Check admin exists
+  Line 160-162: Verify password (NOT SECURE in production!)
+  Line 164: Create Teacher object from Firestore data
+  Line 165: Set AppState (logged in, is admin)
+  Line 167: Navigate to admin dashboard
+
+Lines 180-220: _loginTeacher() - Teacher Authentication
+
+Lines 190-220: Query Firestore
+  final teacherDoc = await _db
+      .collection('teachers')
+      .where('email', isEqualTo: email)
+      .get();
+  
+  if (teacherDoc.docs.isEmpty) {
+    throw Exception('No teacher account found.');
+  }
+  
+  final teacherData = teacherDoc.docs.first.data();
+  
+  if (teacherData['password'] != password) {
+    throw Exception('Incorrect password.');
+  }
+  
+  final teacher = Teacher.fromMap(teacherData);
+  context.read<AppState>().login(teacher, isAdmin: false);
+  
+  Navigator.pushReplacementNamed(context, '/teacher');
+  
+  What: Same as admin, but for teachers
+  Difference:
+    Line 193: Only query email (no isAdmin filter)
+    Line 211: login(..., isAdmin: false)
+    Line 213: Navigate to /teacher (teacher dashboard)
+
+================================================================================
+PART 3: STATE MANAGEMENT (AppState)
+================================================================================
+
+FILE: lib/providers/app_state.dart
+
+Lines 14-55: RoomOverride Class
+
+Line 14: class RoomOverride {
+  What: Represents a time-based block on a room
+  Used for: Maintenance, meetings, closed days
+
+Line 15-20: Fields
+  final String id;              ← Unique identifier
+  final String roomId;          ← Which room
+  final String roomName;        ← Human-readable name
+  final String reason;          ← Why blocked (event description)
+  final DateTime startDate;     ← Block starts
+  final DateTime endDate;       ← Block ends
+
+Lines 32-37: coversDate() Method
+  bool coversDate(DateTime date) {
+    final d = DateTime(date.year, date.month, date.day);
+    final s = DateTime(startDate.year, startDate.month, startDate.day);
+    final e = DateTime(endDate.year, endDate.month, endDate.day);
+    return !d.isBefore(s) && !d.isAfter(e);
+  }
+  
+  What: Check if override blocks this date
+  Line 33: Normalize input date (strip time)
+  Line 34-35: Normalize start & end dates
+  Line 36: Return true if date falls between start and end (inclusive)
+  
+  Example:
+    Override: Jan 15-17, 2025
+    coversDate(Jan 15): true  (first day included)
+    coversDate(Jan 16): true  (middle day included)
+    coversDate(Jan 17): true  (last day included)
+    coversDate(Jan 14): false (before start)
+
+Lines 57-95: AppState Class - Core Properties
+
+Line 57: class AppState extends ChangeNotifier {
+  What: Central state management class
+  Extends ChangeNotifier: Can call notifyListeners() to trigger rebuilds
+
+Lines 58-60: Authentication State
+  bool _isLoggedIn = false;
+  bool _isAdmin = false;
+  Teacher? _currentTeacher;
+  
+  What: Track logged-in status
+  _isLoggedIn: Is anyone logged in?
+  _isAdmin: Is current user an admin?
+  _currentTeacher: Who is logged in (null if not logged in)
+
+Lines 62-64: Public Getters (Read-Only Access)
+  bool get isLoggedIn => _isLoggedIn;
+  bool get isAdmin => _isAdmin;
+  Teacher? get currentTeacher => _currentTeacher;
+  
+  What: Widgets use these to access data
+  Why: Prevent direct modification of private variables
+  Usage in widgets:
+    final state = context.read<AppState>();
+    if (state.isAdmin) { showAdminUI(); }
+
+Lines 66-73: Data Collections
+  List<Teacher> _teachers = [];
+  List<Room> _rooms = [];
+  List<Subject> _subjects = [];
+  List<String> _sections = [];
+  List<ScheduleEntry> _scheduleEntries = [];
+  List<ScheduleConflict> _conflicts = [];
+  List<ChatMessage> _chatMessages = [];
+  List<RoomOverride> _roomOverrides = [];
+  
+  What: Collections of all entities
+  Why: Single source of truth for app data
+  Private (_): Protected from direct modification
+
+Lines 75-76: Request-Driven State
+  Set<String> _cancelledEntryIds = {};
+  Map<String, String> _teacherRequestStatuses = {};
+  
+  What: Special state for specific features
+  _cancelledEntryIds: IDs of cancelled classes
+  _teacherRequestStatuses: Map of teacher ID → request status
+
+Lines 78-87: Public Getters (List<Unmodifiable>)
+  List<Teacher> get teachers => List.unmodifiable(_teachers);
+  List<Room> get rooms => List.unmodifiable(_rooms);
+  ...
+  
+  What: Expose lists but prevent outside modification
+  List.unmodifiable(): Returns read-only wrapper
+  Why: Prevent bugs from accidental modification
+  Usage:
+    final rooms = state.rooms;  ← Can read
+    state.rooms.add(newRoom);   ← Error! Can't modify
+
+Lines 89-94: Computed Properties
+  int get availableRooms => 
+    _rooms.where((r) => r.status == RoomStatus.available).length;
+  
+  int get occupiedRooms => 
+    _rooms.where((r) => r.status == RoomStatus.occupied).length;
+  
+  int get scheduledClasses => _scheduleEntries.length;
+  
+  int get activeConflicts => 
+    _conflicts.where((c) => !c.isResolved).length;
+  
+  int get pendingChatRequests => 
+    _chatMessages.where((m) => !m.isResolved).length;
+  
+  double get occupancyRate => 
+    _rooms.isEmpty ? 0 : occupiedRooms / _rooms.length;
+  
+  What: Calculate values on-the-fly
+  Why: Always up-to-date, no separate state variable
+  Used in: Dashboard cards, statistics
+  Examples:
+    availableRooms: Filters rooms by status == available
+    activeConflicts: Filters conflicts where isResolved == false
+    occupancyRate: Division to get percentage (0.0 to 1.0)
+
+Line 96: final _db = FirebaseFirestore.instance;
+  What: Reference to Firestore
+  Why: Query and update database
+  Used in: All _subscribeToXXX and _loadXXXFromFirestore methods
+
+Lines 98-103: Stream Subscriptions
+  StreamSubscription<QuerySnapshot>? _chatSubscription;
+  StreamSubscription<QuerySnapshot>? _scheduleSubscription;
+  StreamSubscription<QuerySnapshot>? _cancelledSubscription;
+  StreamSubscription<QuerySnapshot>? _statusSubscription;
+  StreamSubscription<QuerySnapshot>? _overrideSubscription;
+  
+  What: Persistent connections to Firestore
+  Why: Listen for real-time changes
+  ?: Nullable (might be null if not yet subscribed)
+
+Lines 105-106: Constructor & Initialization
+  AppState() { _loadData(); }
+  
+  What: Runs when AppState is created
+  When: When app starts (main.dart, line 25)
+  What _loadData() does:
+    1. Load mock data (instant)
+    2. notifyListeners() (show UI)
+    3. Load from Firestore (background)
+    4. Subscribe to real-time updates
+
+Lines 108-115: dispose() Override
+  @override
+  void dispose() {
+    _chatSubscription?.cancel();
+    _scheduleSubscription?.cancel();
+    _cancelledSubscription?.cancel();
+    _statusSubscription?.cancel();
+    _overrideSubscription?.cancel();
+    super.dispose();
+  }
+  
+  What: Clean up when app closes
+  Why: Prevent memory leaks, close database connections
+  ?. operator: Safely call cancel() even if null
+  super.dispose(): Call parent class cleanup
+
+
+Lines 118-156: _loadData() - Main Initialization
+
+Lines 120-137: Seed with MockData
+  _teachers = List.from(MockData.teachers);
+  _rooms = List.from(MockData.rooms);
+  _subjects = List.from(MockData.subjects);
+  _sections = [...];  ← Hardcoded section names
+  _scheduleEntries = List.from(MockData.scheduleEntries);
+  _conflicts = MockData.conflicts;
+  _chatMessages = [];  ← Empty (Firestore only)
+  notifyListeners();
+  
+  What: Load fallback data into memory
+  Why: UI shows immediately (not empty)
+  Why List.from(): Create copy, not reference
+    If we modify _teachers, MockData.teachers stays unchanged
+  Why _chatMessages = []: Chat is persistent, only from Firestore
+  notifyListeners(): Tell widgets to rebuild
+
+Lines 141-149: Load from Firestore (Async)
+  await _loadSubjectsFromFirestore();
+  await _loadTeachersFromFirestore();
+  await Future.wait([
+    _loadRoomsFromFirestore(),
+    _loadSectionsFromFirestore(),
+  ]);
+  _resolveTeacherSubjects();
+  _detectConflicts();
+  notifyListeners();
+  
+  What: Query Firestore and overlay data
+  Why: Get real data from database
+  Line 143-146: Future.wait() runs _loadRoomsFromFirestore & _loadSectionsFromFirestore
+    in parallel (faster than sequential)
+  Line 147: Link teachers to their assigned subjects
+  Line 148: Run conflict detection algorithm
+  Line 149: Notify UI of updates
+
+Lines 151-155: Subscribe to Real-Time Updates
+  _subscribeToSchedules();
+  _subscribeToChatMessages();
+  _subscribeToCancelledClasses();
+  _subscribeToTeacherRequestStatuses();
+  _subscribeToRoomOverrides();
+  
+  What: Set up persistent Firestore listeners
+  Why: Automatic updates when data changes
+  When: Stays active until dispose() called
+  Result: App always in sync
+
+
+Lines 159-198: _subscribeToSchedules() - Real-Time Schedule Updates
+
+Line 159: void _subscribeToSchedules() {
+  What: Listen to 'schedules' collection for changes
+  
+Line 160: _scheduleSubscription?.cancel();
+  What: Cancel any existing listener
+  Why: Avoid duplicate listeners, cleanup
+
+Lines 161-164: Create New Listener
+  _scheduleSubscription = _db
+      .collection('schedules')
+      .snapshots()
+      .listen((snapshot) {
+  
+  What: Get stream of snapshots
+  .collection('schedules'): Connect to schedules collection
+  .snapshots(): Create stream (emits every time collection changes)
+  .listen(): Act on each snapshot
+
+Lines 165-189: Process Snapshots
+  final firestoreEntries = <ScheduleEntry>[];
+  for (final doc in snapshot.docs) {
+    final d = doc.data();
+    final teacher = _teachers.cast<Teacher?>().firstWhere(
+      (t) => t!.id == d['teacherId'], 
+      orElse: () => null
+    );
+    final room = _rooms.cast<Room?>().firstWhere(...);
+    final subject = _subjects.cast<Subject?>().firstWhere(...);
+    
+    if (teacher == null || room == null || subject == null) continue;
+    
+    firestoreEntries.add(ScheduleEntry(...));
+  }
+  
+  What: Convert Firestore documents to ScheduleEntry objects
+  Line 168-170: Find teacher object from _teachers
+    - Cast list (allow nulls temporarily)
+    - Find where teacher.id matches d['teacherId']
+    - If not found, return null
+  Similar for room & subject
+  Line 174: Skip this entry if any reference is missing
+
+Lines 190-194: Merge with MockData
+  final firestoreIds = firestoreEntries.map((e) => e.id).toSet();
+  final mockOnly = _scheduleEntries
+      .where((e) => !firestoreIds.contains(e.id) && !e.id.startsWith('s'))
+      .toList();
+  _scheduleEntries = [...mockOnly, ...firestoreEntries];
+  
+  What: Combine mock and real data without duplication
+  Line 190: Get all Firestore entry IDs
+  Line 191-192: Keep mock entries that are NOT in Firestore
+    - !firestoreIds.contains(e.id): Not in Firestore
+    - !e.id.startsWith('s'): Not a Firestore ID format
+  Line 193: Combine: mock-only + firestore entries
+  Result: No duplicates, both sources available
+
+Lines 195-197: Update & Notify
+  _detectConflicts();
+  notifyListeners();
+  }, onError: (e) => debugPrint('Schedule stream error: $e'));
+  
+  What: Run conflict detection, notify widgets
+  Line 195: Re-run conflict algorithm (might be new conflicts)
+  Line 196: Trigger widget rebuilds
+  Line 197: Log errors if stream breaks
+
+
+Lines 203-230: _subscribeToChatMessages() - Real-Time Chat
+
+Line 203: void _subscribeToChatMessages() {
+  What: Listen to 'chat_messages' collection
+  
+Line 204: _chatSubscription?.cancel();
+  What: Cancel old listener
+
+Lines 206-209: Create Listener
+  _chatSubscription = _db
+      .collection('chat_messages')
+      .orderBy('timestamp', descending: true)
+      .snapshots()
+      .listen((snapshot) {
+  
+  What: Get snapshots, newest first
+  .orderBy('timestamp', descending: true): Sort by time, newest first
+  Important: Order is preserved in snapshot.docs
+
+Lines 211-225: Convert Documents
+  _chatMessages = snapshot.docs.map((doc) {
+    final d = doc.data();
+    return ChatMessage(
+      id: doc.id,
+      senderId: d['senderId'] ?? '',
+      senderName: d['senderName'] ?? '',
+      message: d['message'] ?? '',
+      isFromTeacher: d['isFromTeacher'] ?? true,
+      timestamp: (d['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      isResolved: d['isResolved'] ?? false,
+      adminResponse: d['adminResponse'],
+      wasApproved: d['wasApproved'],
+    );
+  }).toList();
+  notifyListeners();
+  
+  What: Map Firestore documents to ChatMessage objects
+  ?? operator: Use value or fallback
+    Example: d['message'] ?? '' → message, or empty if null
+  Timestamp?.toDate(): Convert Firestore timestamp to DateTime
+  Result: Type-safe message objects
+
+Line 226: notifyListeners();
+  What: Rebuild all Consumer widgets
+  Effect: TeacherChatbotScreen, AdminChatbotScreen refresh immediately
+
+
+================================================================================
+PART 4: CONFLICT DETECTION ALGORITHM
+================================================================================
+
+FILE: lib/providers/app_state.dart, Lines 400-520
+
+The _detectConflicts() method is the core of the system.
+It finds all scheduling problems and creates ScheduleConflict objects.
+
+Pseudocode Flow:
+
+  _detectConflicts() {
+    List<ScheduleConflict> newConflicts = [];
+    
+    // For each scheduled class:
+    for (ScheduleEntry entry in _scheduleEntries) {
+      
+      // 1. CHECK: Does this room have an override?
+      for (RoomOverride override in _roomOverrides) {
+        if (override.roomId == entry.room.id) {
+          if (override.coversDate(entry.day)) {
+            // CONFLICT: Room is blocked
+            newConflicts.add(ScheduleConflict(
+              type: ConflictType.roomBlockedByOverride,
+              description: "Room blocked: ${override.reason}"
+            ));
+          }
+        }
+      }
+      
+      // 2. CHECK: Is teacher teaching two classes at same time?
+      for (ScheduleEntry other in _scheduleEntries) {
+        if (other.id != entry.id) {  // Different class
+          if (other.teacher.id == entry.teacher.id) {  // Same teacher
+            if (other.day == entry.day) {  // Same day
+              if (timesOverlap(entry.timeStart, entry.timeEnd,
+                               other.timeStart, other.timeEnd)) {
+                // CONFLICT: Teacher double-scheduled
+                newConflicts.add(ScheduleConflict(
+                  type: ConflictType.teacherDoubleScheduled,
+                  conflictingEntry1: entry,
+                  conflictingEntry2: other,
+                  description: "Teacher scheduled for two classes"
+                ));
+              }
+            }
+          }
+        }
+      }
+      
+      // 3. CHECK: Is room booked twice at same time?
+      for (ScheduleEntry other in _scheduleEntries) {
+        if (other.id != entry.id) {
+          if (other.room.id == entry.room.id) {  // Same room
+            if (other.day == entry.day) {  // Same day
+              if (timesOverlap(entry.timeStart, entry.timeEnd,
+                               other.timeStart, other.timeEnd)) {
+                // CONFLICT: Room double-booked
+                newConflicts.add(ScheduleConflict(
+                  type: ConflictType.doubleBookedRoom,
+                  ...
+                ));
+              }
+            }
+          }
+        }
+      }
+      
+      // 4. CHECK: Does room have required equipment?
+      if (entry.subject.requiresProjector && !entry.room.hasProjector) {
+        // CONFLICT: No projector
+        newConflicts.add(...);
+      }
+      
+      if (entry.subject.requiresComputers && !entry.room.hasComputers) {
+        // CONFLICT: No computers
+        newConflicts.add(...);
+      }
+      
+      // 5. CHECK: Does room match required type?
+      if (entry.subject.type == SubjectType.laboratory) {
+        if (entry.room.type != RoomType.laboratory) {
+          // CONFLICT: Lab subject needs lab room
+          newConflicts.add(...);
+        }
+      }
+      
+      // 6. CHECK: Is room large enough?
+      int sectionSize = calculateEnrollment(entry.section);
+      if (sectionSize > entry.room.capacity) {
+        // CONFLICT: Too many students for room
+        newConflicts.add(...);
+      }
+    }
+    
+    _conflicts = newConflicts;
+    notifyListeners();
+  }
+
+KEY ALGORITHM DETAILS:
+
+1. Nested Loops
+   - Outer: For each schedule entry
+   - Inner: Compare with every other entry/override/etc
+   - Complexity: O(n²) - can be slow with many entries
+   - Optimization: Could use indexes/hashing
+
+2. Time Overlap Check
+   The system needs a helper method to detect overlapping times:
+   
+   bool timesOverlap(String start1, String end1,
+                     String start2, String end2) {
+     // Convert "HH:mm" strings to minutes since midnight
+     int s1 = timeToMinutes(start1);  // e.g. "08:00" → 480
+     int e1 = timeToMinutes(end1);    // e.g. "09:30" → 570
+     int s2 = timeToMinutes(start2);
+     int e2 = timeToMinutes(end2);
+     
+     // Overlap if: s1 < e2 AND s2 < e1
+     return s1 < e2 && s2 < e1;
+   }
+   
+   Examples:
+     Class 1: 08:00-09:30
+     Class 2: 08:30-10:00
+     Overlap: 08:30-09:30 ✓ CONFLICT
+     
+     Class 1: 08:00-09:30
+     Class 2: 09:30-11:00
+     Overlap: None (back-to-back) ✓ OK
+     
+     Class 1: 08:00-09:30
+     Class 2: 14:00-15:30
+     Overlap: None (different time) ✓ OK
+
+3. RoomOverride Impact
+   
+   When override is created:
+     RoomOverride {
+       roomId: "r1",
+       roomName: "1A",
+       reason: "Faculty Meeting",
+       startDate: Jan 15,
+       endDate: Jan 15
+     }
+   
+   During _detectConflicts():
+     If any schedule entry:
+       - Is in room "r1"
+       - Is on Jan 15
+     Then:
+       Create conflict: "Room 1A blocked due to Faculty Meeting"
+   
+   This prevents scheduling (conflicts resolved by human admin)
+
+
+================================================================================
+PART 5: ROOM OVERRIDE IN ACTION
+================================================================================
+
+EXAMPLE SCENARIO: Faculty Meeting in Room 1A
+
+Step 1: Admin navigates to Room Manager
+        File: room_manager_screen.dart
+
+Step 2: Admin selects Room 1A
+        Taps "Add Override" button
+        
+Step 3: Fill form:
+        Room: 1A (auto-filled)
+        Reason: "Faculty Meeting"
+        Date Range: Jan 15, 2025 to Jan 15, 2025
+        
+Step 4: Submit
+        Code saves to Firestore:
+        db.collection('room_overrides').add({
+          'roomId': 'r1',
+          'roomName': '1A',
+          'reason': 'Faculty Meeting',
+          'startDate': '2025-01-15T00:00:00Z',
+          'endDate': '2025-01-15T00:00:00Z'
+        })
+        
+Step 5: Firestore listener fires
+        Reference: app_state.dart, line 257 (_subscribeToRoomOverrides)
+        
+        _overrideSubscription fires with new snapshot
+        _roomOverrides list updated with new override
+        notifyListeners() called
+
+Step 6: Conflict detection runs
+        Reference: app_state.dart, line 400 (_detectConflicts)
+        
+        For each schedule entry:
+          Is it in room 'r1'? If yes:
+            Check _roomOverrides
+            Does any override cover this entry's day?
+            
+            override.coversDate(Jan 15) → TRUE
+            
+            CREATE CONFLICT:
+            ScheduleConflict {
+              type: roomBlockedByOverride,
+              description: "Room 1A blocked: Faculty Meeting",
+              conflictingEntry1: [CS101 class scheduled in 1A on Jan 15]
+            }
+
+Step 7: Admin sees conflict notification
+        ConflictDetectionScreen shows:
+        "⚠ Room Blocked"
+        "Room 1A blocked due to: Faculty Meeting"
+        
+Step 8: TeacherDashboardScreen updates
+        If Dr. Santos has CS101 in 1A on Jan 15:
+        
+        Chat notification appears:
+        "Your class location changed"
+        "Room 1A is blocked for Faculty Meeting on Jan 15"
+        
+Step 9: Admin resolves conflict
+        Options:
+        a) Move CS101 to different room (1B, 1C, etc)
+        b) Move to different time slot
+        c) Cancel class
+        
+        Admin chooses: Move to Room 1B
+        
+        Update Firestore:
+        db.collection('schedules').doc('sch-cs101').update({
+          'roomId': 'r2',  // 1B
+          'room': {name: '1B', ...}
+        })
+
+Step 10: Listener fires again
+        _subscribeToSchedules catches update
+        CS101 now has roomId: 'r2'
+        
+        _detectConflicts() runs again
+        override.coversDate(Jan 15)
+        But roomId is 'r2', override is for 'r1'
+        No conflict!
+        
+        conflict.isResolved = true
+
+Step 11: UI updates
+        Conflict removed from "Active Conflicts"
+        Moved to "Resolved"
+        
+        Teacher chat notification:
+        "Your class was moved to Room 1B"
+
+This entire flow demonstrates how overrides integrate with the conflict system.
+
+
+================================================================================
+END OF CODE BREAKDOWN
+================================================================================
