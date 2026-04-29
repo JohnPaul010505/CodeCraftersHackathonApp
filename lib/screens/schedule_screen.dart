@@ -828,6 +828,10 @@ class _ScheduleFormPanelState extends State<_ScheduleFormPanel> {
   String _timeStart = '07:30';
   String _timeEnd = '09:00';
   bool _initialized = false;
+  // ✅ NEW: specific date picker
+  DateTime? _specificDate;
+
+  static const _monthNames = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
   @override
   void initState() {
@@ -836,6 +840,44 @@ class _ScheduleFormPanelState extends State<_ScheduleFormPanel> {
     _selectedDay = widget.existingEntry?.day ?? widget.preselectedDay;
     _timeStart   = widget.existingEntry?.timeStart ?? '07:30';
     _timeEnd     = widget.existingEntry?.timeEnd ?? '09:00';
+  }
+
+  /// Opens date picker and auto-sets the day-of-week from the chosen date.
+  Future<void> _pickDate(BuildContext context) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _specificDate ?? DateTime.now(),
+      firstDate: DateTime(2024),
+      lastDate: DateTime(2030),
+      builder: (ctx, child) => Theme(
+        data: Theme.of(ctx).copyWith(
+          colorScheme: const ColorScheme.light(
+            primary: Color(0xFF1E1E1E),
+            onPrimary: Colors.white,
+            surface: Colors.white,
+          ),
+        ),
+        child: child!,
+      ),
+    );
+    if (picked != null) {
+      // Map weekday (1=Mon … 6=Sat, 7=Sun) to day name
+      final dayNames = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+      if (picked.weekday <= 6) {
+        setState(() {
+          _specificDate = picked;
+          _selectedDay = dayNames[picked.weekday - 1];
+        });
+      } else {
+        // Sunday — warn and don't set
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Sundays are not valid class days.', style: GoogleFonts.inter()),
+          backgroundColor: const Color(0xFFC62828),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ));
+      }
+    }
   }
 
   /// Initialise subject/teacher/room from state on first build only.
@@ -998,16 +1040,80 @@ class _ScheduleFormPanelState extends State<_ScheduleFormPanel> {
                 ),
                 const SizedBox(height: 14),
 
+                // ✅ NEW: Specific date picker (auto-sets day below)
+                if (existing == null) ...[
+                  _lbl('Specific Date (optional)'),
+                  const SizedBox(height: 8),
+                  GestureDetector(
+                    onTap: () => _pickDate(context),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: _specificDate != null
+                              ? AppColors.darkGray
+                              : AppColors.borderGray,
+                          width: _specificDate != null ? 1.5 : 1,
+                        ),
+                      ),
+                      child: Row(children: [
+                        Icon(
+                          Icons.calendar_today_outlined,
+                          size: 16,
+                          color: _specificDate != null ? AppColors.darkGray : AppColors.lightGray,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            _specificDate != null
+                                ? '${_specificDate!.day} ${_monthNames[_specificDate!.month]} ${_specificDate!.year}'
+                                : 'Pick a date to auto-select day',
+                            style: GoogleFonts.inter(
+                              fontSize: 13,
+                              color: _specificDate != null ? AppColors.darkGray : AppColors.lightGray,
+                            ),
+                          ),
+                        ),
+                        if (_specificDate != null)
+                          GestureDetector(
+                            onTap: () => setState(() => _specificDate = null),
+                            child: const Icon(Icons.close, size: 16, color: AppColors.lightGray),
+                          ),
+                      ]),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                ],
+
                 // Day (only for add)
                 if (existing == null) ...[
-                  _lbl('Day'),
+                  Row(children: [
+                    _lbl('Day'),
+                    if (_specificDate != null) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.available.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text('auto-set from date',
+                            style: GoogleFonts.inter(fontSize: 9, fontWeight: FontWeight.w600, color: AppColors.available)),
+                      ),
+                    ],
+                  ]),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 6, runSpacing: 6,
                     children: _fullDays.map((d) {
                       final sel = (_selectedDay ?? widget.preselectedDay) == d;
                       return GestureDetector(
-                        onTap: () => setState(() => _selectedDay = d),
+                        onTap: () => setState(() {
+                          _selectedDay = d;
+                          _specificDate = null; // clear date if manually overriding
+                        }),
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 150),
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1100,7 +1206,62 @@ class _ScheduleFormPanelState extends State<_ScheduleFormPanel> {
               Expanded(
                 child: ElevatedButton(
                   onPressed: () {
-                    if (_selectedSubject == null || _selectedTeacher == null || _selectedRoom == null) return;
+                    // ── Validate all required fields ──────────────────────
+                    final schedMissing = <String>[];
+                    if (_selectedSubject == null) schedMissing.add('Subject');
+                    if (_selectedTeacher == null) schedMissing.add('Teacher');
+                    if (_selectedRoom == null) schedMissing.add('Room');
+                    if (_selectedSection == null || _selectedSection!.isEmpty) schedMissing.add('Section');
+                    if (_selectedDay == null || _selectedDay!.isEmpty) schedMissing.add('Day');
+                    if (schedMissing.isNotEmpty) {
+                      showDialog(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          title: Row(children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFC62828).withOpacity(0.1),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.event_busy_outlined, color: Color(0xFFC62828), size: 20),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(child: Text('Incomplete Schedule',
+                                style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700))),
+                          ]),
+                          content: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Please complete all required fields:',
+                                  style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF4A4A4A))),
+                              const SizedBox(height: 12),
+                              ...schedMissing.map((f) => Padding(
+                                padding: const EdgeInsets.only(bottom: 6),
+                                child: Row(children: [
+                                  Container(width: 6, height: 6, decoration: const BoxDecoration(color: Color(0xFFC62828), shape: BoxShape.circle)),
+                                  const SizedBox(width: 8),
+                                  Text(f, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w500)),
+                                ]),
+                              )),
+                            ],
+                          ),
+                          actions: [
+                            ElevatedButton(
+                              onPressed: () => Navigator.pop(ctx),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF1E1E1E),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              ),
+                              child: Text('Got it', style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: Colors.white)),
+                            ),
+                          ],
+                        ),
+                      );
+                      return;
+                    }
                     final entry = existing == null
                         ? ScheduleEntry(
                       id: 'sch_${DateTime.now().millisecondsSinceEpoch}',

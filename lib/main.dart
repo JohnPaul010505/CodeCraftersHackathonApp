@@ -12,7 +12,7 @@ Future<void> main() async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp, DeviceOrientation.portraitDown]);
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    statusBarColor: Colors.transparent, statusBarIconBrightness: Brightness.light));
+      statusBarColor: Colors.transparent, statusBarIconBrightness: Brightness.light));
   runApp(const SmartAcademicApp());
 }
 
@@ -23,7 +23,7 @@ class SmartAcademicApp extends StatelessWidget {
     return ChangeNotifierProvider(
       create: (_) => AppState(),
       child: MaterialApp(
-        title: 'Smart Academic Scheduling',
+        title: 'Global Reciprocal College Scheduling',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
         home: const SplashScreen(),

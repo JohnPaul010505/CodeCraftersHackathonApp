@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "159018685995",
+    "project_id": "amcc-8d73f",
+    "storage_bucket": "amcc-8d73f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:159018685995:android:bd6224ea23036da6dd3c6e",
+        "android_client_info": {
+          "package_name": "com.example.room_sync"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "159018685995-lja3oo80sv755ptlfkmf5p5mqnn4g84m.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBeZfjx86WxU1f6vAQHd182pj8KZ0N_rvw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "159018685995-lja3oo80sv755ptlfkmf5p5mqnn4g84m.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

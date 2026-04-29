@@ -405,7 +405,7 @@ class _LoginScreenState extends State<LoginScreen>
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Text(
-                'Smart Academic Scheduling',
+                'Global Reciprocal College Scheduling',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.poppins(
                   fontSize: 20,

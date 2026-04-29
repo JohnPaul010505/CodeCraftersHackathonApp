@@ -47,8 +47,69 @@ class _State extends State<RoomManagerScreen> {
     super.dispose();
   }
 
+  List<String> _missingFields() {
+    final m = <String>[];
+    if (_nameCtrl.text.trim().isEmpty) m.add('Room Name / Code');
+    if (_floorCtrl.text.trim().isEmpty) m.add('Floor');
+    if (_capCtrl.text.trim().isEmpty) m.add('Capacity');
+    return m;
+  }
+
+  void _showValidationError(List<String> missing) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: Row(children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFC62828).withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.error_outline, color: Color(0xFFC62828), size: 20),
+          ),
+          const SizedBox(width: 10),
+          Text('Incomplete Form',
+              style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: const Color(0xFF1E1E1E))),
+        ]),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Please fill in all required fields before saving:',
+                style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF4A4A4A))),
+            const SizedBox(height: 12),
+            ...missing.map((f) => Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(children: [
+                Container(width: 6, height: 6, decoration: const BoxDecoration(color: Color(0xFFC62828), shape: BoxShape.circle)),
+                const SizedBox(width: 8),
+                Text(f, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w500, color: const Color(0xFF1E1E1E))),
+              ]),
+            )),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF1E1E1E),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: Text('Got it', style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _save() async {
-    if (!_formKey.currentState!.validate()) return;
+    final missing = _missingFields();
+    if (missing.isNotEmpty || !_formKey.currentState!.validate()) {
+      _showValidationError(missing.isNotEmpty ? missing : ['Please check all fields']);
+      return;
+    }
     setState(() => _saving = true);
     await Future.delayed(const Duration(milliseconds: 300));
     final state = Provider.of<AppState>(context, listen: false);

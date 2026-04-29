@@ -378,7 +378,7 @@ class _SplashScreenState extends State<SplashScreen>
                   child: FadeTransition(
                     opacity: _textFadeAnim,
                     child: Text(
-                      'Smart Academic Scheduling System',
+                      'Global Reciprocal College\'s Scheduling System',
                       style: GoogleFonts.poppins(
                         fontSize: 10,
                         color: const Color(0xFF555555),

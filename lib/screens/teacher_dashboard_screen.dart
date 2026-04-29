@@ -149,8 +149,6 @@ class _TeacherHome extends StatefulWidget {
 }
 
 class _TeacherHomeState extends State<_TeacherHome> {
-  // Track which notification IDs the teacher has already viewed.
-  // Badge disappears once seen; reappears only when new ones arrive.
   final Set<String> _seenConflictIds   = {};
   final Set<String> _seenResponseIds   = {};
 
@@ -171,12 +169,10 @@ class _TeacherHomeState extends State<_TeacherHome> {
               c.conflictingEntry2.teacher.id == teacher.id))
           .toList();
 
-      // Admin responses (resolved chat messages for this teacher)
       final adminResponses = state.chatMessages
           .where((m) => m.senderId == teacher.id && m.isResolved)
           .toList();
 
-      // Unseen = items not yet marked as viewed by the teacher
       final unseenConflicts  = myConflicts.where((c) => !_seenConflictIds.contains(c.id)).toList();
       final unseenResponses  = adminResponses.where((m) => !_seenResponseIds.contains(m.id)).toList();
       final totalUnseenCount = unseenConflicts.length + unseenResponses.length;
@@ -224,10 +220,8 @@ class _TeacherHomeState extends State<_TeacherHome> {
                           ],
                         ),
                       ),
-                      // ── Notification bell (conflicts + admin responses) ──
                       GestureDetector(
                         onTap: () {
-                          // Mark all current notifications as seen
                           setState(() {
                             _seenConflictIds.addAll(myConflicts.map((c) => c.id));
                             _seenResponseIds.addAll(adminResponses.map((m) => m.id));
@@ -320,7 +314,6 @@ class _TeacherHomeState extends State<_TeacherHome> {
                                 ]),
                               ]),
 
-                            // ── Notification hint banner (if conflicts exist) ─
                             if (unseenConflicts.isNotEmpty) ...[
                               const SizedBox(height: 16),
                               GestureDetector(
@@ -393,7 +386,6 @@ class _TeacherHomeState extends State<_TeacherHome> {
     });
   }
 
-  /// Opens the notification panel with conflicts + admin responses.
   void _showNotificationsPanel(
       BuildContext context,
       AppState state,
@@ -485,7 +477,6 @@ class _NotificationsPanelState extends State<_NotificationsPanel> {
         ),
         child: Column(
           children: [
-            // Handle
             Center(
               child: Container(
                 margin: const EdgeInsets.only(top: 10, bottom: 4),
@@ -493,7 +484,6 @@ class _NotificationsPanelState extends State<_NotificationsPanel> {
                 decoration: BoxDecoration(color: AppColors.borderGray, borderRadius: BorderRadius.circular(2)),
               ),
             ),
-            // Header
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
               child: Row(children: [
@@ -526,8 +516,6 @@ class _NotificationsPanelState extends State<_NotificationsPanel> {
                 controller: scrollCtrl,
                 padding: const EdgeInsets.all(16),
                 children: [
-
-                  // ── Schedule Conflicts section ──────────────────────
                   if (hasConflicts) ...[
                     _sectionHeader('Schedule Conflicts', AppColors.conflict, Icons.warning_amber_outlined),
                     const SizedBox(height: 10),
@@ -546,7 +534,6 @@ class _NotificationsPanelState extends State<_NotificationsPanel> {
                         ),
                         child: Column(
                           children: [
-                            // Card header
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                               decoration: BoxDecoration(
@@ -606,7 +593,6 @@ class _NotificationsPanelState extends State<_NotificationsPanel> {
                     const SizedBox(height: 8),
                   ],
 
-                  // ── Admin Responses section ─────────────────────────
                   if (hasResponses) ...[
                     _sectionHeader('Admin Responses', AppColors.available, Icons.admin_panel_settings_outlined),
                     const SizedBox(height: 10),
@@ -625,7 +611,6 @@ class _NotificationsPanelState extends State<_NotificationsPanel> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // Status header
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                               decoration: BoxDecoration(
@@ -647,7 +632,6 @@ class _NotificationsPanelState extends State<_NotificationsPanel> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  // Original request preview
                                   Container(
                                     padding: const EdgeInsets.all(10),
                                     decoration: BoxDecoration(
@@ -815,8 +799,9 @@ class _TodayCard extends StatelessWidget {
                           ],
                         ),
                         const SizedBox(height: 2),
+                        // ✅ FIXED: Removed escaped backslashes — was \${entry.subject.code}
                         Text(
-                          '\${entry.subject.code} · \${entry.section}',
+                          '${entry.subject.code} · ${entry.section}',
                           style: GoogleFonts.inter(
                             fontSize: 11,
                             color: isCancelled ? AppColors.lightGray : AppColors.red,
@@ -826,7 +811,8 @@ class _TodayCard extends StatelessWidget {
                         Row(children: [
                           Icon(Icons.access_time_outlined, size: 12, color: AppColors.lightGray),
                           const SizedBox(width: 4),
-                          Text('\${entry.timeStart} – \${entry.timeEnd}',
+                          // ✅ FIXED: Removed escaped backslashes — was \${entry.timeStart}
+                          Text('${entry.timeStart} – ${entry.timeEnd}',
                               style: GoogleFonts.inter(fontSize: 11, color: AppColors.lightGray)),
                           const SizedBox(width: 14),
                           Icon(Icons.meeting_room_outlined, size: 12, color: AppColors.lightGray),

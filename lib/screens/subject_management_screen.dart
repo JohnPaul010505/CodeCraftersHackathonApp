@@ -591,9 +591,12 @@ class _SubjectManagementScreenState extends State<SubjectManagementScreen> {
                   onPressed: saving
                       ? null
                       : () {
-                    if (codeCtrl.text.trim().isEmpty ||
-                        nameCtrl.text.trim().isEmpty) {
-                      ss(() => err = 'Subject code and name are required.');
+                    final missingSubj = <String>[];
+                    if (codeCtrl.text.trim().isEmpty) missingSubj.add('Subject Code');
+                    if (nameCtrl.text.trim().isEmpty) missingSubj.add('Subject Name');
+                    if (deptCtrl.text.trim().isEmpty) missingSubj.add('Department');
+                    if (missingSubj.isNotEmpty) {
+                      ss(() => err = 'Required: ${missingSubj.join(', ')}');
                       return;
                     }
                     ss(() => saving = true);

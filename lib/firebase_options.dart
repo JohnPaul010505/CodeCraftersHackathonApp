@@ -23,10 +23,7 @@ class DefaultFirebaseOptions {
       case TargetPlatform.android:
         return android;
       case TargetPlatform.iOS:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for ios - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return ios;
       case TargetPlatform.macOS:
         throw UnsupportedError(
           'DefaultFirebaseOptions have not been configured for macos - '
@@ -50,20 +47,30 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyA6Qs8jsKIbyKgQ_g7LKeMqmdaBEwE8ByM',
-    appId: '1:106652581577:web:696568c8dec7646c0a1718',
-    messagingSenderId: '106652581577',
-    projectId: 'roomsync-c70c4',
-    authDomain: 'roomsync-c70c4.firebaseapp.com',
-    storageBucket: 'roomsync-c70c4.firebasestorage.app',
-    measurementId: 'G-YTCZ3WPFXX',
+    apiKey: 'AIzaSyCfybRoQvGoVr1pTjzO2iFmTQg29WEF8ag',
+    appId: '1:159018685995:web:2ac9e90d04f850d8dd3c6e',
+    messagingSenderId: '159018685995',
+    projectId: 'amcc-8d73f',
+    authDomain: 'amcc-8d73f.firebaseapp.com',
+    storageBucket: 'amcc-8d73f.firebasestorage.app',
+    measurementId: 'G-VSF8X2QP8P',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyBIYSw1WsQjYGZjdSjjeucQlcCEgaGbpRM',
-    appId: '1:106652581577:android:1a9d66763c8688870a1718',
-    messagingSenderId: '106652581577',
-    projectId: 'roomsync-c70c4',
-    storageBucket: 'roomsync-c70c4.firebasestorage.app',
+    apiKey: 'AIzaSyBeZfjx86WxU1f6vAQHd182pj8KZ0N_rvw',
+    appId: '1:159018685995:android:bd6224ea23036da6dd3c6e',
+    messagingSenderId: '159018685995',
+    projectId: 'amcc-8d73f',
+    storageBucket: 'amcc-8d73f.firebasestorage.app',
+  );
+
+  static const FirebaseOptions ios = FirebaseOptions(
+    apiKey: 'AIzaSyCIjQSm7TMSErMuGCGFlE6N1PfGMDbXblA',
+    appId: '1:159018685995:ios:865eabd0bb91a15bdd3c6e',
+    messagingSenderId: '159018685995',
+    projectId: 'amcc-8d73f',
+    storageBucket: 'amcc-8d73f.firebasestorage.app',
+    iosClientId: '159018685995-8ao01hd0lm5udsrep4dvv2615f211q2k.apps.googleusercontent.com',
+    iosBundleId: 'com.example.roomSync',
   );
 }

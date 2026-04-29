@@ -1,6 +1,4 @@
 // lib/screens/export_reports_screen.dart
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:html' as html;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -10,23 +8,12 @@ import '../models/teacher.dart';
 import '../models/room.dart';
 import '../theme/app_theme.dart';
 
-// ─── Download helpers ─────────────────────────────────────────────────────────
+// Conditional import: uses dart:html on web, no-op stubs on Android/iOS.
+import 'download_helper_stub.dart'
+if (dart.library.html) 'download_helper_web.dart';
 
-void _downloadCsv(String content, String fileName) {
-  final blob = html.Blob([content], 'text/csv;charset=utf-8;');
-  final url = html.Url.createObjectUrlFromBlob(blob);
-  html.AnchorElement()
-    ..href = url
-    ..setAttribute('download', fileName)
-    ..click();
-  html.Url.revokeObjectUrl(url);
-}
-
-void _openHtmlInNewTab(String htmlContent) {
-  final blob = html.Blob([htmlContent], 'text/html');
-  final url = html.Url.createObjectUrlFromBlob(blob);
-  html.window.open(url, '_blank');
-}
+// ─── Report type enum ─────────────────────────────────────────────────────────
+enum _ReportType { teacherLoad, roomSchedule, fullSchedule, conflict }
 
 // =============================================================================
 //  Export Reports – entry list
@@ -39,140 +26,16 @@ class ExportReportsScreen extends StatefulWidget {
   State<ExportReportsScreen> createState() => _ExportReportsScreenState();
 }
 
-class _ExportReportsScreenState extends State<ExportReportsScreen> {
-  bool _isRefreshing = false;
-
-  Future<void> _refresh(AppState state) async {
-    if (_isRefreshing) return;
-    setState(() => _isRefreshing = true);
-    await state.refreshAllData();
-    if (mounted) setState(() => _isRefreshing = false);
-  }
+class _ExportReportsScreenState extends State<ExportReportsScreen>
+    with _GenerateReportsMixin {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<AppState>(builder: (context, state, _) {
-      return Scaffold(
-        backgroundColor: const Color(0xFFF0F0F0),
-        appBar: AppBar(
-          backgroundColor: AppColors.darkGray,
-          foregroundColor: Colors.white,
-          elevation: 0,
-          automaticallyImplyLeading: false,
-          title: const SizedBox.shrink(),
-          actions: [
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: _isRefreshing
-                  ? const Center(
-                child: SizedBox(
-                  width: 20, height: 20,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 2, color: Colors.white),
-                ),
-              )
-                  : IconButton(
-                icon: const Icon(Icons.refresh, color: Colors.white),
-                tooltip: 'Refresh data',
-                onPressed: () => _refresh(state),
-              ),
-            ),
-          ],
-        ),
-        body: Column(
-          children: [
-            _ReportTile(
-              icon: Icons.bar_chart,
-              iconColor: AppColors.darkGray,
-              title: 'Generate Reports',
-              subtitle: 'Export schedules and analytics to CSV or PDF',
-              isFirst: true,
-              onTap: () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const GenerateReportsScreen())),
-            ),
-            const SizedBox(height: 8),
-            _ReportTile(
-              icon: Icons.person,
-              iconColor: const Color(0xFF2196F3),
-              title: 'Teacher Load Report',
-              subtitle: 'View teaching units, subjects, and schedules for all teachers',
-              onTap: () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => TeacherLoadReportScreen(state: state))),
-            ),
-            const SizedBox(height: 4),
-            _ReportTile(
-              icon: Icons.meeting_room,
-              iconColor: const Color(0xFF4CAF50),
-              title: 'Room Schedule Report',
-              subtitle: 'View room usage, time slots, and assigned subjects',
-              onTap: () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const RoomScheduleReportScreen())),
-            ),
-          ],
-        ),
-      );
-    });
+    final state = Provider.of<AppState>(context);
+    return buildGenerateReports(context, state);
   }
 }
 
-class _ReportTile extends StatelessWidget {
-  final IconData icon;
-  final Color iconColor;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-  final bool isFirst;
-
-  const _ReportTile({
-    required this.icon,
-    required this.iconColor,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-    this.isFirst = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: EdgeInsets.fromLTRB(12, isFirst ? 12 : 4, 12, 0),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 6,
-              offset: const Offset(0, 2)),
-        ],
-      ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        onTap: onTap,
-        leading: Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-              color: iconColor, borderRadius: BorderRadius.circular(10)),
-          child: Icon(icon, color: Colors.white, size: 22),
-        ),
-        title: Text(title,
-            style: GoogleFonts.inter(
-                fontSize: 15,
-                fontWeight: isFirst ? FontWeight.w700 : FontWeight.w600,
-                color: AppColors.darkGray)),
-        subtitle: Text(subtitle,
-            style: GoogleFonts.inter(fontSize: 12, color: AppColors.lightGray)),
-        trailing: const Icon(Icons.chevron_right, color: AppColors.lightGray),
-      ),
-    );
-  }
-}
-
-// =============================================================================
-//  Generate Reports Screen — full screen with tap-to-select cards
-// =============================================================================
-enum _ReportType { teacherLoad, roomSchedule, fullSchedule, conflict }
 
 class GenerateReportsScreen extends StatefulWidget {
   const GenerateReportsScreen({super.key});
@@ -181,7 +44,7 @@ class GenerateReportsScreen extends StatefulWidget {
   State<GenerateReportsScreen> createState() => _GenerateReportsScreenState();
 }
 
-class _GenerateReportsScreenState extends State<GenerateReportsScreen> {
+mixin _GenerateReportsMixin<T extends StatefulWidget> on State<T> {
   _ReportType _selected = _ReportType.teacherLoad;
   bool _exportingCsv = false;
   bool _exportingPdf = false;
@@ -215,10 +78,7 @@ class _GenerateReportsScreenState extends State<GenerateReportsScreen> {
     ),
   ];
 
-  @override
-  Widget build(BuildContext context) {
-    final state = Provider.of<AppState>(context);
-
+  Widget buildGenerateReports(BuildContext context, AppState state) {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -237,7 +97,6 @@ class _GenerateReportsScreenState extends State<GenerateReportsScreen> {
               icon: const Icon(Icons.refresh, color: Colors.white),
               tooltip: 'Refresh data',
               onPressed: () async {
-                final state = Provider.of<AppState>(context, listen: false);
                 setState(() => _exportingCsv = true);
                 await state.refreshAllData();
                 if (mounted) setState(() {
@@ -253,22 +112,17 @@ class _GenerateReportsScreenState extends State<GenerateReportsScreen> {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Title
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 20, 20, 4),
             child: Text('Generate Reports',
                 style: GoogleFonts.inter(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.darkGray)),
+                    fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.darkGray)),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
             child: Text('Select a report type to preview and export',
                 style: GoogleFonts.inter(fontSize: 13, color: AppColors.lightGray)),
           ),
-
-          // Report type selector cards (tap to select, not checkboxes)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
@@ -295,20 +149,15 @@ class _GenerateReportsScreenState extends State<GenerateReportsScreen> {
                       ),
                       child: Column(
                         children: [
-                          Icon(opt.icon,
-                              size: 22,
+                          Icon(opt.icon, size: 22,
                               color: isActive ? Colors.white : AppColors.midGray),
                           const SizedBox(height: 6),
-                          Text(
-                            opt.label,
-                            textAlign: TextAlign.center,
-                            style: GoogleFonts.inter(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                              color: isActive ? Colors.white : AppColors.midGray,
-                              height: 1.3,
-                            ),
-                          ),
+                          Text(opt.label, textAlign: TextAlign.center,
+                              style: GoogleFonts.inter(
+                                fontSize: 10, fontWeight: FontWeight.w600,
+                                color: isActive ? Colors.white : AppColors.midGray,
+                                height: 1.3,
+                              )),
                         ],
                       ),
                     ),
@@ -317,8 +166,6 @@ class _GenerateReportsScreenState extends State<GenerateReportsScreen> {
               }).toList(),
             ),
           ),
-
-          // Selected report description banner
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
             child: AnimatedSwitcher(
@@ -332,38 +179,26 @@ class _GenerateReportsScreenState extends State<GenerateReportsScreen> {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(children: [
-                  Icon(
-                    _options.firstWhere((o) => o.type == _selected).icon,
-                    size: 16,
-                    color: AppColors.darkGray,
-                  ),
+                  Icon(_options.firstWhere((o) => o.type == _selected).icon,
+                      size: 16, color: AppColors.darkGray),
                   const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      _options.firstWhere((o) => o.type == _selected).desc,
-                      style: GoogleFonts.inter(fontSize: 12, color: AppColors.midGray),
-                    ),
-                  ),
+                  Expanded(child: Text(
+                    _options.firstWhere((o) => o.type == _selected).desc,
+                    style: GoogleFonts.inter(fontSize: 12, color: AppColors.midGray),
+                  )),
                 ]),
               ),
             ),
           ),
-
-          // Table header
           _buildTableHeader(),
-
-          // Table body — scrollable data
           Expanded(child: _buildTableBody(state)),
-
-          // Export bar
           _ExportBar(
             exportingCsv: _exportingCsv,
             exportingPdf: _exportingPdf,
             doneCsv: _doneCsv,
             donePdf: _donePdf,
-            onExportCsv: () => _doExport(state: state, isCsv: true),
-            onExportPdf: () => _doExport(state: state, isCsv: false),
-            onClose: () => Navigator.pop(context),
+            onExportCsv: () => _doExport(context: context, state: state, isCsv: true),
+            onExportPdf: () => _doExport(context: context, state: state, isCsv: false),
           ),
         ],
       ),
@@ -374,87 +209,64 @@ class _GenerateReportsScreenState extends State<GenerateReportsScreen> {
     switch (_selected) {
       case _ReportType.teacherLoad:
         return const _TableHeader(cells: [
-          _Cell('Teacher', flex: 3),
-          _Cell('Department', flex: 2),
-          _Cell('Subjects', flex: 3),
-          _Cell('Units', fixedWidth: 70),
+          _Cell('Teacher', flex: 3), _Cell('Department', flex: 2),
+          _Cell('Subjects', flex: 3), _Cell('Units', fixedWidth: 70),
           _Cell('Status', flex: 2),
         ]);
       case _ReportType.roomSchedule:
         return const _TableHeader(cells: [
-          _Cell('Room', flex: 2),
-          _Cell('Floor', fixedWidth: 50),
-          _Cell('Capacity', fixedWidth: 70),
-          _Cell('Status', flex: 2),
+          _Cell('Room', flex: 2), _Cell('Floor', fixedWidth: 50),
+          _Cell('Capacity', fixedWidth: 70), _Cell('Status', flex: 2),
           _Cell('Usage', flex: 4),
         ]);
       case _ReportType.fullSchedule:
         return const _TableHeader(cells: [
-          _Cell('Subject', flex: 2),
-          _Cell('Teacher', flex: 2),
-          _Cell('Room', flex: 2),
-          _Cell('Section', flex: 2),
+          _Cell('Subject', flex: 2), _Cell('Teacher', flex: 2),
+          _Cell('Room', flex: 2), _Cell('Section', flex: 2),
           _Cell('Day & Time', flex: 3),
         ]);
       case _ReportType.conflict:
         return const _TableHeader(cells: [
-          _Cell('Type', flex: 2),
-          _Cell('Description', flex: 4),
-          _Cell('Status', flex: 2),
-          _Cell('Detected', flex: 2),
+          _Cell('Type', flex: 2), _Cell('Description', flex: 4),
+          _Cell('Status', flex: 2), _Cell('Detected', flex: 2),
         ]);
     }
   }
 
   Widget _buildTableBody(AppState state) {
     switch (_selected) {
-      case _ReportType.teacherLoad:
-        return _TeacherLoadTable(state: state);
-      case _ReportType.roomSchedule:
-        return _RoomTable(state: state);
-      case _ReportType.fullSchedule:
-        return _ScheduleTable(state: state);
-      case _ReportType.conflict:
-        return _ConflictTable(state: state);
+      case _ReportType.teacherLoad: return _TeacherLoadTable(state: state);
+      case _ReportType.roomSchedule: return _RoomTable(state: state);
+      case _ReportType.fullSchedule: return _ScheduleTable(state: state);
+      case _ReportType.conflict: return _ConflictTable(state: state);
     }
   }
 
-  Future<void> _doExport({required AppState state, required bool isCsv}) async {
+  Future<void> _doExport({required BuildContext context, required AppState state, required bool isCsv}) async {
     setState(() {
       if (isCsv) { _exportingCsv = true; _doneCsv = false; }
       else { _exportingPdf = true; _donePdf = false; }
     });
-
     final ts = DateFormat('yyyyMMdd_HHmm').format(DateTime.now());
     String csvContent = '';
     String fileName = '';
     String htmlContent = '';
-
     switch (_selected) {
       case _ReportType.teacherLoad:
-        csvContent = _buildTeacherCsv(state);
-        fileName = 'teacher_load_report_$ts.csv';
+        csvContent = _buildTeacherCsv(state); fileName = 'teacher_load_report_$ts.csv';
         htmlContent = _buildTeacherHtml(state);
       case _ReportType.roomSchedule:
-        csvContent = _buildRoomCsv(state);
-        fileName = 'room_schedule_report_$ts.csv';
+        csvContent = _buildRoomCsv(state); fileName = 'room_schedule_report_$ts.csv';
         htmlContent = _buildRoomHtml(state);
       case _ReportType.fullSchedule:
-        csvContent = _buildScheduleCsv(state);
-        fileName = 'full_schedule_report_$ts.csv';
+        csvContent = _buildScheduleCsv(state); fileName = 'full_schedule_report_$ts.csv';
         htmlContent = _buildScheduleHtml(state);
       case _ReportType.conflict:
-        csvContent = _buildConflictCsv(state);
-        fileName = 'conflict_report_$ts.csv';
+        csvContent = _buildConflictCsv(state); fileName = 'conflict_report_$ts.csv';
         htmlContent = _buildConflictHtml(state);
     }
-
-    if (isCsv) {
-      _downloadCsv(csvContent, fileName);
-    } else {
-      _openHtmlInNewTab(htmlContent);
-    }
-
+    if (isCsv) { downloadCsv(csvContent, fileName); }
+    else { openHtmlInNewTab(htmlContent); }
     await Future.delayed(const Duration(milliseconds: 600));
     if (!mounted) return;
     setState(() {
@@ -463,8 +275,7 @@ class _GenerateReportsScreenState extends State<GenerateReportsScreen> {
     });
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(
-        isCsv ? '$fileName downloaded'
-            : 'Opened in new tab — use browser Print → Save as PDF',
+        isCsv ? '$fileName downloaded' : 'Opened in new tab — use browser Print → Save as PDF',
         style: GoogleFonts.inter(),
       ),
       backgroundColor: AppColors.available,
@@ -473,14 +284,11 @@ class _GenerateReportsScreenState extends State<GenerateReportsScreen> {
     ));
   }
 
-  // ── CSV builders ─────────────────────────────────────────────────────────────
   String _buildTeacherCsv(AppState state) {
     final buf = StringBuffer();
     buf.writeln('Teacher Name,Department,Employee ID,Unit Type,Current Units,Max Units,Status,Subjects');
     for (final t in state.teachers) {
-      final subjects = state.scheduleEntries
-          .where((e) => e.teacher.id == t.id)
-          .map((e) => e.subject.code).toSet().join('; ');
+      final subjects = state.scheduleEntries.where((e) => e.teacher.id == t.id).map((e) => e.subject.code).toSet().join('; ');
       buf.writeln('"${t.fullName}","${t.department}","${t.employeeId}","${t.unitType}",${t.currentUnits},${t.maxUnits},"${t.status.name}","$subjects"');
     }
     return buf.toString();
@@ -490,8 +298,9 @@ class _GenerateReportsScreenState extends State<GenerateReportsScreen> {
     final buf = StringBuffer();
     buf.writeln('Room,Floor,Capacity,Type,Projector,AC,Computers,Status,Usage');
     for (final r in state.rooms) {
-      final statusLabel = _effectiveStatusLabel(r, state);
-      buf.writeln('"${r.name}",${r.floor},${r.capacity},"${r.typeLabel}",${r.hasProjector},${r.hasAirConditioning},${r.hasComputers},"$statusLabel","${_roomUsageText(r, state)}"');
+      final hasEntries = state.scheduleEntries.any((e) => e.room.id == r.id);
+      final label = (r.status == RoomStatus.available && hasEntries) ? 'Occupied' : r.statusLabel;
+      buf.writeln('"${r.name}",${r.floor},${r.capacity},"${r.typeLabel}",${r.hasProjector},${r.hasAirConditioning},${r.hasComputers},"$label","${_roomUsageText(r, state)}"');
     }
     return buf.toString();
   }
@@ -516,7 +325,6 @@ class _GenerateReportsScreenState extends State<GenerateReportsScreen> {
     return buf.toString();
   }
 
-  // ── HTML builders ─────────────────────────────────────────────────────────────
   String _baseHtml(String title, String tableHtml) => '''
 <html lang="en"><head><title>$title</title>
 <style>
@@ -534,88 +342,59 @@ $tableHtml
 
   String _buildTeacherHtml(AppState state) {
     final rows = state.teachers.map((t) {
-      final subjects = state.scheduleEntries
-          .where((e) => e.teacher.id == t.id)
-          .map((e) => e.subject.code).toSet().join(', ');
-      final hasConflict = state.conflicts.where((c) => !c.isResolved).any((c) =>
-      c.conflictingEntry1.teacher.id == t.id || c.conflictingEntry2.teacher.id == t.id);
+      final subjects = state.scheduleEntries.where((e) => e.teacher.id == t.id).map((e) => e.subject.code).toSet().join(', ');
+      final hasConflict = state.conflicts.where((c) => !c.isResolved).any((c) => c.conflictingEntry1.teacher.id == t.id || c.conflictingEntry2.teacher.id == t.id);
       final reqStatus = state.teacherRequestStatuses[t.id] ?? '';
-      final String htmlStatus = reqStatus.isNotEmpty
-          ? reqStatus
-          : (hasConflict ? 'Has conflict' : 'No conflicts');
-      final String htmlClass = (reqStatus == 'Absent') ? 'amber'
-          : (reqStatus == 'Class Cancelled' || hasConflict) ? 'red'
-          : (reqStatus.isNotEmpty) ? 'amber' : 'green';
-      final subjectsCell = subjects.isEmpty ? '\u2014' : subjects;
-      return '<tr><td>${t.fullName}</td><td>${t.department}</td><td>$subjectsCell</td>'
-          '<td>${t.currentUnits}/${t.maxUnits}</td>'
-          '<td class="$htmlClass">$htmlStatus</td></tr>';
+      final htmlStatus = reqStatus.isNotEmpty ? reqStatus : (hasConflict ? 'Has conflict' : 'No conflicts');
+      final htmlClass = (reqStatus == 'Absent') ? 'amber' : (reqStatus == 'Class Cancelled' || hasConflict) ? 'red' : reqStatus.isNotEmpty ? 'amber' : 'green';
+      return '<tr><td>${t.fullName}</td><td>${t.department}</td><td>${subjects.isEmpty ? '—' : subjects}</td><td>${t.currentUnits}/${t.maxUnits}</td><td class="$htmlClass">$htmlStatus</td></tr>';
     }).join();
-    return _baseHtml('Teacher Load Report',
-        '<table><tr><th>Teacher</th><th>Department</th><th>Subjects</th><th>Units</th><th>Status</th></tr>$rows</table>');
+    return _baseHtml('Teacher Load Report', '<table><tr><th>Teacher</th><th>Department</th><th>Subjects</th><th>Units</th><th>Status</th></tr>$rows</table>');
   }
 
   String _buildRoomHtml(AppState state) {
     final rows = state.rooms.map((r) {
-      final statusLabel = _effectiveStatusLabel(r, state);
+      final hasEntries = state.scheduleEntries.any((e) => e.room.id == r.id);
       final cls = switch (r.status) {
-        RoomStatus.event => 'amber',
-        RoomStatus.maintenance => 'orange',
+        RoomStatus.event => 'amber', RoomStatus.maintenance => 'orange',
         RoomStatus.occupied => 'red',
-        RoomStatus.available => state.scheduleEntries.any((e) => e.room.id == r.id) ? 'red' : 'green',
+        RoomStatus.available => hasEntries ? 'red' : 'green',
       };
-      return '<tr><td>${r.name}</td><td>${r.floor}</td><td>${r.capacity}</td>'
-          '<td class="$cls">$statusLabel</td><td>${_roomUsageText(r, state)}</td></tr>';
+      final label = (r.status == RoomStatus.available && hasEntries) ? 'Occupied' : r.statusLabel;
+      return '<tr><td>${r.name}</td><td>${r.floor}</td><td>${r.capacity}</td><td class="$cls">$label</td><td>${_roomUsageText(r, state)}</td></tr>';
     }).join();
-    return _baseHtml('Room Schedule Report',
-        '<table><tr><th>Room</th><th>Floor</th><th>Capacity</th><th>Status</th><th>Usage</th></tr>$rows</table>');
+    return _baseHtml('Room Schedule Report', '<table><tr><th>Room</th><th>Floor</th><th>Capacity</th><th>Status</th><th>Usage</th></tr>$rows</table>');
   }
 
   String _buildScheduleHtml(AppState state) {
     final rows = state.scheduleEntries.map((e) =>
-    '<tr><td>${e.subject.code}</td><td>${e.teacher.fullName}</td>'
-        '<td>${e.room.name}</td><td>${e.section}</td>'
-        '<td>${e.day} ${e.timeStart}–${e.timeEnd}</td></tr>').join();
-    return _baseHtml('Full Schedule Report',
-        '<table><tr><th>Subject</th><th>Teacher</th><th>Room</th><th>Section</th><th>Day & Time</th></tr>$rows</table>');
+    '<tr><td>${e.subject.code}</td><td>${e.teacher.fullName}</td><td>${e.room.name}</td><td>${e.section}</td><td>${e.day} ${e.timeStart}–${e.timeEnd}</td></tr>').join();
+    return _baseHtml('Full Schedule Report', '<table><tr><th>Subject</th><th>Teacher</th><th>Room</th><th>Section</th><th>Day & Time</th></tr>$rows</table>');
   }
 
   String _buildConflictHtml(AppState state) {
     final rows = state.conflicts.map((c) =>
-    '<tr><td>${c.typeLabel}</td><td>${c.description}</td>'
-        '<td class="${c.isResolved ? 'green' : 'red'}">${c.isResolved ? 'Resolved' : 'Active'}</td>'
-        '<td>${DateFormat('MMM dd, yyyy').format(c.detectedAt)}</td></tr>').join();
-    return _baseHtml('Conflict Report',
-        '<table><tr><th>Type</th><th>Description</th><th>Status</th><th>Detected</th></tr>$rows</table>');
+    '<tr><td>${c.typeLabel}</td><td>${c.description}</td><td class="${c.isResolved ? 'green' : 'red'}">${c.isResolved ? 'Resolved' : 'Active'}</td><td>${DateFormat('MMM dd, yyyy').format(c.detectedAt)}</td></tr>').join();
+    return _baseHtml('Conflict Report', '<table><tr><th>Type</th><th>Description</th><th>Status</th><th>Detected</th></tr>$rows</table>');
   }
 
   String _roomUsageText(Room r, AppState state) {
-    if (r.status == RoomStatus.occupied && r.currentSubject != null) {
-      return '${r.currentSubject} – ${r.currentTeacher ?? ''}';
-    }
+    if (r.status == RoomStatus.occupied && r.currentSubject != null) return '${r.currentSubject} – ${r.currentTeacher ?? ''}';
     if (r.status == RoomStatus.occupied) return 'Manually set as occupied';
-    if ((r.status == RoomStatus.event || r.status == RoomStatus.maintenance) &&
-        r.eventNote != null) return r.eventNote!;
+    if ((r.status == RoomStatus.event || r.status == RoomStatus.maintenance) && r.eventNote != null) return r.eventNote!;
     final entries = state.scheduleEntries.where((e) => e.room.id == r.id).toList();
     if (entries.isNotEmpty) return '${entries.first.subject.code} – ${entries.first.teacher.fullName}';
     return 'Not scheduled';
   }
+}
 
-  // Returns effective status label — rooms with schedule entries count as Occupied
-  String _effectiveStatusLabel(Room r, AppState state) {
-    if (r.status == RoomStatus.event) return 'Event';
-    if (r.status == RoomStatus.maintenance) return 'Maintenance';
-    if (r.status == RoomStatus.occupied) return 'Occupied';
-    final hasEntries = state.scheduleEntries.any((e) => e.room.id == r.id);
-    return hasEntries ? 'Occupied' : 'Available';
-  }
+class _GenerateReportsScreenState extends State<GenerateReportsScreen>
+    with _GenerateReportsMixin {
 
-  Color _effectiveStatusColor(Room r, AppState state) {
-    if (r.status == RoomStatus.event) return AppColors.warning;
-    if (r.status == RoomStatus.maintenance) return AppColors.moderate;
-    if (r.status == RoomStatus.occupied) return AppColors.conflict;
-    final hasEntries = state.scheduleEntries.any((e) => e.room.id == r.id);
-    return hasEntries ? AppColors.conflict : AppColors.available;
+  @override
+  Widget build(BuildContext context) {
+    final state = Provider.of<AppState>(context);
+    return buildGenerateReports(context, state);
   }
 }
 
@@ -939,7 +718,6 @@ class _TeacherLoadReportScreenState extends State<TeacherLoadReportScreen> {
             donePdf: _donePdf,
             onExportCsv: () => _doExport(state: state, isCsv: true),
             onExportPdf: () => _doExport(state: state, isCsv: false),
-            onClose: () => Navigator.pop(context),
           ),
         ],
       ),
@@ -961,7 +739,7 @@ class _TeacherLoadReportScreenState extends State<TeacherLoadReportScreen> {
             .map((e) => e.subject.code).toSet().join('; ');
         buf.writeln('"${t.fullName}","${t.department}","${t.employeeId}","${t.unitType}",${t.currentUnits},${t.maxUnits},"${t.status.name}","$subjects"');
       }
-      _downloadCsv(buf.toString(), 'teacher_load_report_$ts.csv');
+      downloadCsv(buf.toString(), 'teacher_load_report_$ts.csv');
     } else {
       final rows = state.teachers.map((t) {
         final subjects = state.scheduleEntries
@@ -981,7 +759,7 @@ class _TeacherLoadReportScreenState extends State<TeacherLoadReportScreen> {
             '<td style="color:$htmlColor3">'
             '$htmlStatus3</td></tr>';
       }).join();
-      _openHtmlInNewTab('''<html lang="en"><head><title>Teacher Load Report</title>
+      openHtmlInNewTab('''<html lang="en"><head><title>Teacher Load Report</title>
 <style>body{font-family:Arial;font-size:13px;padding:24px}
 table{width:100%;border-collapse:collapse}
 th{background:#1E1E1E;color:#fff;padding:8px 10px;text-align:left}
@@ -1012,8 +790,6 @@ $rows</table></body></html>''');
 
 // =============================================================================
 //  Room Schedule Report Screen
-//  FIX: TickerProviderStateMixin (not SingleTickerProviderStateMixin)
-//       so the TabController can be safely re-created without ticker conflicts
 // =============================================================================
 class RoomScheduleReportScreen extends StatefulWidget {
   const RoomScheduleReportScreen({super.key});
@@ -1023,7 +799,7 @@ class RoomScheduleReportScreen extends StatefulWidget {
 }
 
 class _RoomScheduleReportScreenState extends State<RoomScheduleReportScreen>
-    with TickerProviderStateMixin {     // ← KEY FIX (was SingleTicker)
+    with TickerProviderStateMixin {
   TabController? _tabController;
   List<int> _floors = [];
   bool _exportingCsv = false;
@@ -1048,7 +824,6 @@ class _RoomScheduleReportScreenState extends State<RoomScheduleReportScreen>
     return Consumer<AppState>(builder: (context, state, _) {
       final floors = state.rooms.map((r) => r.floor).toSet().toList()..sort();
 
-      // Rebuild tabs only when floor list actually changes
       if (_tabController == null ||
           floors.length != _floors.length ||
           !floors.every((f) => _floors.contains(f))) {
@@ -1085,7 +860,6 @@ class _RoomScheduleReportScreenState extends State<RoomScheduleReportScreen>
         ),
         body: Column(
           children: [
-            // Floor tabs
             TabBar(
               controller: tc,
               isScrollable: true,
@@ -1098,8 +872,6 @@ class _RoomScheduleReportScreenState extends State<RoomScheduleReportScreen>
               dividerColor: Colors.grey.shade200,
               tabs: floors.map((f) => Tab(text: 'FLOOR $f')).toList(),
             ),
-
-            // Table header
             const _TableHeader(cells: [
               _Cell('Room', flex: 2),
               _Cell('Capacity', fixedWidth: 72),
@@ -1107,8 +879,6 @@ class _RoomScheduleReportScreenState extends State<RoomScheduleReportScreen>
               _Cell('Status', flex: 2),
               _Cell('Usage', flex: 3),
             ]),
-
-            // Live room rows per floor tab
             Expanded(
               child: TabBarView(
                 controller: tc,
@@ -1126,7 +896,6 @@ class _RoomScheduleReportScreenState extends State<RoomScheduleReportScreen>
                 }).toList(),
               ),
             ),
-
             _ExportBar(
               exportingCsv: _exportingCsv,
               exportingPdf: _exportingPdf,
@@ -1134,7 +903,6 @@ class _RoomScheduleReportScreenState extends State<RoomScheduleReportScreen>
               donePdf: _donePdf,
               onExportCsv: () => _doExport(state: state, isCsv: true),
               onExportPdf: () => _doExport(state: state, isCsv: false),
-              onClose: () => Navigator.pop(context),
             ),
           ],
         ),
@@ -1159,7 +927,7 @@ class _RoomScheduleReportScreenState extends State<RoomScheduleReportScreen>
             '${r.hasProjector},${r.hasAirConditioning},${r.hasComputers},'
             '"$effectiveLabel","${_usageText(r, state)}"');
       }
-      _downloadCsv(buf.toString(), 'room_schedule_report_$ts.csv');
+      downloadCsv(buf.toString(), 'room_schedule_report_$ts.csv');
     } else {
       final floors = state.rooms.map((r) => r.floor).toSet().toList()..sort();
       final htmlBuf = StringBuffer();
@@ -1188,7 +956,7 @@ td{padding:7px 10px;border-bottom:1px solid #eee}
         htmlBuf.write('</table>');
       }
       htmlBuf.write('</body></html>');
-      _openHtmlInNewTab(htmlBuf.toString());
+      openHtmlInNewTab(htmlBuf.toString());
     }
     await Future.delayed(const Duration(milliseconds: 600));
     if (!mounted) return;
@@ -1243,7 +1011,6 @@ class _RoomRow extends StatelessWidget {
     if (room.status == RoomStatus.event) return AppColors.warning;
     if (room.status == RoomStatus.maintenance) return AppColors.moderate;
     if (room.status == RoomStatus.occupied) return AppColors.conflict;
-    // available but has schedule entries → treat as occupied
     return state.scheduleEntries.any((e) => e.room.id == room.id)
         ? AppColors.conflict : AppColors.available;
   }
@@ -1334,13 +1101,12 @@ class _TableHeader extends StatelessWidget {
 
 class _ExportBar extends StatelessWidget {
   final bool exportingCsv, exportingPdf, doneCsv, donePdf;
-  final VoidCallback onExportCsv, onExportPdf, onClose;
+  final VoidCallback onExportCsv, onExportPdf;
 
   const _ExportBar({
     required this.exportingCsv, required this.exportingPdf,
     required this.doneCsv, required this.donePdf,
     required this.onExportCsv, required this.onExportPdf,
-    required this.onClose,
   });
 
   @override
@@ -1361,17 +1127,6 @@ class _ExportBar extends StatelessWidget {
           icon: Icons.picture_as_pdf_outlined, label: 'Export PDF',
           isLoading: exportingPdf, isDone: donePdf,
           onTap: exportingPdf || donePdf ? null : onExportPdf,
-        ),
-        const SizedBox(width: 10),
-        OutlinedButton(
-          onPressed: onClose,
-          style: OutlinedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            side: const BorderSide(color: Color(0xFFCCCCCC)),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          ),
-          child: Text('Close',
-              style: GoogleFonts.inter(fontSize: 13, color: AppColors.darkGray)),
         ),
       ]),
     );

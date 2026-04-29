@@ -990,7 +990,72 @@ class _TeacherFormPanelState extends State<_TeacherFormPanel> {
     }
   }
 
+
+  List<String> _missingTeacherFields() {
+    final m = <String>[];
+    if (_name.text.trim().isEmpty) m.add('Full Name');
+    if (_email.text.trim().isEmpty) m.add('Email Address');
+    if (_dept.text.trim().isEmpty) m.add('Department');
+    if (_emp.text.trim().isEmpty) m.add('Employee ID');
+    if (_days.isEmpty) m.add('Available Days (select at least one)');
+    return m;
+  }
+
+  void _showValidationError(List<String> missing) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: Row(children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFC62828).withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.error_outline, color: Color(0xFFC62828), size: 20),
+          ),
+          const SizedBox(width: 10),
+          Expanded(child: Text('Incomplete Form',
+              style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700))),
+        ]),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Please fill in all required fields:',
+                style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF4A4A4A))),
+            const SizedBox(height: 12),
+            ...missing.map((f) => Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(children: [
+                Container(width: 6, height: 6, decoration: const BoxDecoration(color: Color(0xFFC62828), shape: BoxShape.circle)),
+                const SizedBox(width: 8),
+                Expanded(child: Text(f, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w500))),
+              ]),
+            )),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF1E1E1E),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: Text('Got it', style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _save() async {
+    final missing = _missingTeacherFields();
+    if (missing.isNotEmpty) {
+      _showValidationError(missing);
+      return;
+    }
     setState(() { _saving = true; _err = null; });
     try {
       final parts = _name.text.trim().split(' ');

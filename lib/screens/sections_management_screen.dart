@@ -629,7 +629,22 @@ class _SectionFormPanelState extends State<_SectionFormPanel> {
   }
 
   void _save() {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) {
+      // Shake the form to draw attention — the inline validator already shows the message
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Row(children: [
+          const Icon(Icons.error_outline, color: Colors.white, size: 16),
+          const SizedBox(width: 8),
+          Expanded(child: Text('Please enter a valid section name.',
+              style: GoogleFonts.inter(fontSize: 13))),
+        ]),
+        backgroundColor: const Color(0xFFC62828),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        duration: const Duration(seconds: 3),
+      ));
+      return;
+    }
     setState(() => _saving = true);
     widget.onSaved(_ctrl.text.trim());
   }
