@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
 import '../providers/app_state.dart';
 import '../theme/app_theme.dart';
 import '../models/schedule.dart';
@@ -997,7 +998,7 @@ class TeacherScheduleViewScreen extends StatefulWidget {
 }
 
 class _TeacherScheduleViewState extends State<TeacherScheduleViewScreen> {
-  static const _days = ['Monday','Tuesday','Wednesday','Thursday','Friday'];
+  static const _days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   String _selectedDay = 'ALL';
 
   @override
@@ -1106,6 +1107,28 @@ class _ScheduleCard extends StatelessWidget {
   final ScheduleEntry entry;
   const _ScheduleCard({required this.entry});
 
+  /// Returns the nearest upcoming date for the given weekday,
+  /// or uses the admin-set specificDate if available.
+  String _dateLabel() {
+    if (entry.specificDate != null) {
+      return DateFormat('MMMM d').format(entry.specificDate!);
+    }
+    const dayMap = {
+      'Monday': DateTime.monday,
+      'Tuesday': DateTime.tuesday,
+      'Wednesday': DateTime.wednesday,
+      'Thursday': DateTime.thursday,
+      'Friday': DateTime.friday,
+      'Saturday': DateTime.saturday,
+    };
+    final target = dayMap[entry.day];
+    if (target == null) return entry.day;
+    final now = DateTime.now();
+    var diff = target - now.weekday;
+    if (diff < 0) diff += 7;
+    return DateFormat('MMMM d').format(now.add(Duration(days: diff)));
+  }
+
   @override
   Widget build(BuildContext context) {
     final hasConflict = entry.hasConflict;
@@ -1127,7 +1150,7 @@ class _ScheduleCard extends StatelessWidget {
             Text(hasConflict ? 'Conflict Detected' : 'Scheduled',
                 style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: statusColor)),
             const Spacer(),
-            _Chip(entry.day, color: AppColors.midGray),
+            _Chip('${_dateLabel()}  ${entry.day}', color: AppColors.midGray),
           ]),
         ),
         Padding(

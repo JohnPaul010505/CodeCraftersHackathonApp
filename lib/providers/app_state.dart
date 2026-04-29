@@ -101,6 +101,7 @@ class AppState extends ChangeNotifier {
   StreamSubscription<QuerySnapshot>? _cancelledSubscription;
   StreamSubscription<QuerySnapshot>? _statusSubscription;
   StreamSubscription<QuerySnapshot>? _overrideSubscription;
+  StreamSubscription<QuerySnapshot>? _roomSubscription; // real-time room sync
 
   AppState() { _loadData(); }
 
@@ -111,6 +112,7 @@ class AppState extends ChangeNotifier {
     _cancelledSubscription?.cancel();
     _statusSubscription?.cancel();
     _overrideSubscription?.cancel();
+    _roomSubscription?.cancel();
     super.dispose();
   }
 
@@ -153,6 +155,7 @@ class AppState extends ChangeNotifier {
     _subscribeToCancelledClasses();
     _subscribeToTeacherRequestStatuses();
     _subscribeToRoomOverrides();
+    _subscribeToRooms();
   }
 
   // ── Real-time Firestore listener for schedules ────────────────────────────
@@ -185,6 +188,9 @@ class AppState extends ChangeNotifier {
           academicYear: d['academicYear'] ?? '2024-2025',
           hasConflict: d['hasConflict'] ?? false,
           createdAt: (d['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+          specificDate: d['specificDate'] != null
+              ? DateTime.tryParse(d['specificDate'] as String)
+              : null,
         ));
       }
       final firestoreIds = firestoreEntries.map((e) => e.id).toSet();
@@ -307,6 +313,10 @@ class AppState extends ChangeNotifier {
     }).toList();
   }
 
+  /// Public method so teacher/admin room screens can force a fresh pull
+  /// from Firestore, keeping both views in sync in real time.
+  Future<void> loadRoomsFromFirestore() => _loadRoomsFromFirestore();
+
   Future<void> _loadRoomsFromFirestore() async {
     try {
       final snap = await _db.collection('rooms').get();
@@ -337,6 +347,47 @@ class AppState extends ChangeNotifier {
     } catch (e) {
       debugPrint('Error loading rooms from Firestore: $e');
     }
+  }
+
+  /// Real-time Firestore stream for rooms — any status change made by the
+  /// admin is instantly reflected on the teacher's room screen too.
+  void _subscribeToRooms() {
+    _roomSubscription?.cancel();
+    _roomSubscription = _db.collection('rooms').snapshots().listen((snap) {
+      if (snap.docs.isEmpty) return;
+      final statusMap = <String, RoomStatus>{};
+      final noteMap   = <String, String?>{};
+      for (final doc in snap.docs) {
+        final d = doc.data();
+        final rawStatus = d['status'] as String? ?? '';
+        RoomStatus st;
+        if (rawStatus.contains('occupied'))    st = RoomStatus.occupied;
+        else if (rawStatus.contains('maintenance')) st = RoomStatus.maintenance;
+        else if (rawStatus.contains('event'))  st = RoomStatus.event;
+        else                                   st = RoomStatus.available;
+        statusMap[doc.id] = st;
+        noteMap[doc.id]   = d['eventNote'] as String?;
+        // Also match by room name for mock rooms that don't have Firestore IDs
+        final name = d['name'] as String?;
+        if (name != null) {
+          final mockIdx = _rooms.indexWhere((r) => r.name == name && r.id != doc.id);
+          if (mockIdx != -1) {
+            statusMap[_rooms[mockIdx].id] = st;
+            noteMap[_rooms[mockIdx].id]   = d['eventNote'] as String?;
+          }
+        }
+      }
+      bool changed = false;
+      for (int i = 0; i < _rooms.length; i++) {
+        final newSt   = statusMap[_rooms[i].id];
+        final newNote = noteMap[_rooms[i].id];
+        if (newSt != null && (_rooms[i].status != newSt || _rooms[i].eventNote != newNote)) {
+          _rooms[i] = _rooms[i].copyWith(status: newSt, eventNote: newNote);
+          changed = true;
+        }
+      }
+      if (changed) notifyListeners();
+    });
   }
 
   Future<void> _loadSubjectsFromFirestore() async {
@@ -639,6 +690,8 @@ class AppState extends ChangeNotifier {
       'academicYear': entry.academicYear,
       'hasConflict': entry.hasConflict,
       'createdAt': FieldValue.serverTimestamp(),
+      if (entry.specificDate != null)
+        'specificDate': entry.specificDate!.toIso8601String(),
     }, SetOptions(merge: true)).catchError((e) => debugPrint('Save schedule error: $e'));
   }
 

@@ -16,6 +16,7 @@ class ScheduleEntry {
   final bool hasConflict;
   final DateTime createdAt;
   final DateTime? updatedAt;
+  final DateTime? specificDate; // exact calendar date set by admin
 
   ScheduleEntry({
     required this.id,
@@ -31,6 +32,7 @@ class ScheduleEntry {
     required this.hasConflict,
     required this.createdAt,
     this.updatedAt,
+    this.specificDate,
   });
 
   String get timeRange => '$timeStart – $timeEnd';
@@ -51,6 +53,7 @@ class ScheduleEntry {
     bool? hasConflict,
     DateTime? createdAt,
     DateTime? updatedAt,
+    DateTime? specificDate,
   }) {
     return ScheduleEntry(
       id: id ?? this.id,
@@ -66,6 +69,7 @@ class ScheduleEntry {
       hasConflict: hasConflict ?? this.hasConflict,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      specificDate: specificDate ?? this.specificDate,
     );
   }
 
@@ -84,6 +88,7 @@ class ScheduleEntry {
       'academicYear': academicYear,
       'hasConflict': hasConflict,
       'createdAt': createdAt.toIso8601String(),
+      if (specificDate != null) 'specificDate': specificDate!.toIso8601String(),
     };
   }
 }

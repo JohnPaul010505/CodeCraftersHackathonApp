@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -23,16 +24,35 @@ class _RoomAvailabilityScreenState extends State<RoomAvailabilityScreen>
   int? _floorFilter;
   String? _equipFilter;
   int _statusIdx = 0; // 0=All, 1=Available, 2=Unavailable
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
     _tab = TabController(length: 3, vsync: this);
     _tab.addListener(() => setState(() {}));
+
+    // Re-evaluate schedule-based occupancy every 60 seconds so both
+    // admin and teacher views stay in sync without manual refresh.
+    _refreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (mounted) setState(() {});
+    });
+
+    // On first load, pull the latest room statuses from Firestore so
+    // any admin change made in a different session is picked up immediately.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        context.read<AppState>().loadRoomsFromFirestore();
+      }
+    });
   }
 
   @override
-  void dispose() { _tab.dispose(); super.dispose(); }
+  void dispose() {
+    _tab.dispose();
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
 
   RoomType? get _typeFilter {
     if (_tab.index == 1) return RoomType.lecture;

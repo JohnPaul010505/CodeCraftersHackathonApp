@@ -1274,6 +1274,7 @@ class _ScheduleFormPanelState extends State<_ScheduleFormPanel> {
                       timeEnd: _timeEnd,
                       semester: '1st Semester', academicYear: '2024-2025',
                       hasConflict: false, createdAt: DateTime.now(),
+                      specificDate: _specificDate,
                     )
                         : existing.copyWith(
                       teacher: _selectedTeacher,

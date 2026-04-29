@@ -18,7 +18,7 @@ class TeacherScheduleScreen extends StatefulWidget {
 
 class _TeacherScheduleScreenState extends State<TeacherScheduleScreen> {
   static const List<String> _days = [
-    'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'
+    'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
   ];
   String _selectedDay = 'ALL';
 
@@ -212,207 +212,279 @@ class _ScheduleCard extends StatelessWidget {
   final ScheduleEntry entry;
   const _ScheduleCard({required this.entry});
 
+  /// Returns the formatted date — uses admin-set specificDate when available,
+  /// otherwise calculates the nearest upcoming weekday date.
+  String _displayDate(String dayName, DateTime? specificDate) {
+    if (specificDate != null) return DateFormat('MMM d').format(specificDate);
+    const dayMap = {
+      'Monday': DateTime.monday, 'Tuesday': DateTime.tuesday,
+      'Wednesday': DateTime.wednesday, 'Thursday': DateTime.thursday,
+      'Friday': DateTime.friday, 'Saturday': DateTime.saturday,
+    };
+    final target = dayMap[dayName];
+    if (target == null) return '';
+    final now = DateTime.now();
+    var diff = target - now.weekday;
+    if (diff < 0) diff += 7;
+    return DateFormat('MMM d').format(now.add(Duration(days: diff)));
+  }
+
   @override
   Widget build(BuildContext context) {
     final hasConflict = entry.hasConflict;
-    final statusColor =
-    hasConflict ? AppColors.conflict : AppColors.available;
-    final isLab =
-    entry.subject.type.toString().contains('laboratory');
+    final accentColor = hasConflict ? AppColors.conflict : AppColors.red;
+    final dateStr = _displayDate(entry.day, entry.specificDate);
 
     return Container(
+      margin: const EdgeInsets.only(bottom: 2),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: statusColor.withValues(alpha: 0.4),
-          width: 1.5,
-        ),
+        border: Border.all(color: AppColors.borderGray),
         boxShadow: [
           BoxShadow(
-            color: statusColor.withValues(alpha: 0.08),
-            blurRadius: 8,
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 6,
             offset: const Offset(0, 2),
-          )
+          ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ── Status header ──────────────────────────────────────────
-          Container(
-            padding: const EdgeInsets.symmetric(
-                horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: statusColor.withValues(alpha: 0.08),
-              borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(10)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // ── Time pill ──────────────────────────────────────────────
+            Container(
+              width: 58,
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              decoration: BoxDecoration(
+                color: accentColor.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    entry.timeStart,
+                    style: GoogleFonts.inter(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: accentColor),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    entry.timeEnd,
+                    style: GoogleFonts.inter(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: accentColor),
+                  ),
+                ],
+              ),
             ),
-            child: Row(children: [
-              Container(
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(
-                  color: statusColor,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                hasConflict ? 'Conflict Detected' : 'Scheduled',
-                style: GoogleFonts.inter(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: statusColor),
-              ),
-              const Spacer(),
-              // Day badge
-              Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 3),
-                decoration: BoxDecoration(
-                  color: AppColors.darkGray.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  entry.day,
-                  style: GoogleFonts.inter(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.darkGray),
-                ),
-              ),
-            ]),
-          ),
 
-          // ── Content ────────────────────────────────────────────────
-          Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Subject name + type badge
-                Row(children: [
-                  Expanded(
-                    child: Text(
-                      entry.subject.name,
-                      style: GoogleFonts.inter(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.darkGray),
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                          color: AppColors.borderGray),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      isLab ? 'laboratory' : 'lecture',
-                      style: GoogleFonts.inter(
-                          fontSize: 10,
-                          color: AppColors.lightGray),
-                    ),
-                  ),
-                ]),
-                const SizedBox(height: 4),
-                Text(
-                  '${entry.room.typeLabel} · Capacity: ${entry.room.capacity} students',
-                  style: GoogleFonts.inter(
-                      fontSize: 12, color: AppColors.lightGray),
-                ),
-                const SizedBox(height: 10),
+            const SizedBox(width: 14),
 
-                // Equipment chips
-                Wrap(
-                  spacing: 8,
-                  children: [
-                    if (entry.room.hasProjector)
-                      _equipChip(Icons.tv_outlined, 'Projector'),
-                    if (entry.room.hasAirConditioning)
-                      _equipChip(
-                          Icons.ac_unit_outlined, 'Air Conditioning'),
-                    if (entry.room.hasComputers)
-                      _equipChip(
-                          Icons.computer_outlined, 'Computers'),
-                  ],
-                ),
-                const SizedBox(height: 12),
-
-                // Status / time row
-                Row(children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: statusColor,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      hasConflict ? 'Conflict' : 'Confirmed',
-                      style: GoogleFonts.inter(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white),
-                    ),
+            // ── Subject info ───────────────────────────────────────────
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Subject name
+                  Text(
+                    entry.subject.name,
+                    style: GoogleFonts.inter(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.darkGray),
                   ),
-                ]),
-                const SizedBox(height: 10),
-
-                // Current class info box
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF8F8F8),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: AppColors.borderGray),
+                  const SizedBox(height: 4),
+                  // Code · Teacher · Section · Room
+                  Text(
+                    '${entry.subject.code} · ${entry.teacher.fullName} · ${entry.section} · ${entry.room.name}',
+                    style: GoogleFonts.inter(
+                        fontSize: 12,
+                        color: AppColors.lightGray),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 2,
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  const SizedBox(height: 6),
+                  // Date · Day badge
+                  Row(
                     children: [
-                      Text(
-                        '${entry.subject.code} · ${entry.section}',
-                        style: GoogleFonts.inter(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.darkGray),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: AppColors.darkGray.withValues(alpha: 0.07),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          '$dateStr · ${entry.day}',
+                          style: GoogleFonts.inter(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.darkGray),
+                        ),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${entry.room.name} · ${entry.day} ${entry.timeStart}–${entry.timeEnd}',
-                        style: GoogleFonts.inter(
-                            fontSize: 12,
-                            color: AppColors.lightGray),
-                      ),
+                      if (hasConflict) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: AppColors.conflict.withValues(alpha: 0.10),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            'Conflict',
+                            style: GoogleFonts.inter(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.conflict),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
+                ],
+              ),
+            ),
+
+            const SizedBox(width: 6),
+
+            // ── Three-dot menu ─────────────────────────────────────────
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert,
+                  size: 20, color: AppColors.lightGray),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+              itemBuilder: (_) => [
+                PopupMenuItem(
+                  value: 'details',
+                  child: Row(children: [
+                    const Icon(Icons.info_outline,
+                        size: 16, color: AppColors.midGray),
+                    const SizedBox(width: 10),
+                    Text('View Details',
+                        style: GoogleFonts.inter(fontSize: 13)),
+                  ]),
+                ),
+                PopupMenuItem(
+                  value: 'room',
+                  child: Row(children: [
+                    const Icon(Icons.meeting_room_outlined,
+                        size: 16, color: AppColors.midGray),
+                    const SizedBox(width: 10),
+                    Text('Room Info',
+                        style: GoogleFonts.inter(fontSize: 13)),
+                  ]),
                 ),
               ],
+              onSelected: (val) {
+                if (val == 'details') {
+                  _showDetailsSheet(context);
+                } else if (val == 'room') {
+                  _showRoomSheet(context);
+                }
+              },
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  Widget _equipChip(IconData icon, String label) {
-    return Container(
-      padding:
-      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        border: Border.all(color: AppColors.borderGray),
-        borderRadius: BorderRadius.circular(20),
+  void _showDetailsSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(entry.subject.name,
+                style: GoogleFonts.inter(
+                    fontSize: 17, fontWeight: FontWeight.w700,
+                    color: AppColors.darkGray)),
+            const SizedBox(height: 4),
+            Text('${entry.subject.code} · ${entry.section}',
+                style: GoogleFonts.inter(
+                    fontSize: 13, color: AppColors.lightGray)),
+            const Divider(height: 24),
+            _detailRow(Icons.access_time_outlined,
+                '${entry.timeStart} – ${entry.timeEnd}'),
+            const SizedBox(height: 10),
+            _detailRow(Icons.calendar_today_outlined,
+                '${_displayDate(entry.day, entry.specificDate)} · ${entry.day}'),
+            const SizedBox(height: 10),
+            _detailRow(Icons.meeting_room_outlined, entry.room.name),
+            const SizedBox(height: 10),
+            _detailRow(Icons.person_outline, entry.teacher.fullName),
+            const SizedBox(height: 10),
+            _detailRow(Icons.school_outlined,
+                entry.subject.typeLabel),
+          ],
+        ),
       ),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, size: 12, color: AppColors.lightGray),
-        const SizedBox(width: 4),
-        Text(label,
-            style: GoogleFonts.inter(
-                fontSize: 11, color: AppColors.midGray)),
-      ]),
     );
+  }
+
+  void _showRoomSheet(BuildContext context) {
+    final room = entry.room;
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(room.name,
+                style: GoogleFonts.inter(
+                    fontSize: 17, fontWeight: FontWeight.w700,
+                    color: AppColors.darkGray)),
+            const SizedBox(height: 4),
+            Text(room.typeLabel,
+                style: GoogleFonts.inter(
+                    fontSize: 13, color: AppColors.lightGray)),
+            const Divider(height: 24),
+            _detailRow(Icons.layers_outlined, 'Floor ${room.floor}'),
+            const SizedBox(height: 10),
+            _detailRow(Icons.people_outline, '${room.capacity} seats'),
+            if (room.hasProjector) ...[
+              const SizedBox(height: 10),
+              _detailRow(Icons.tv_outlined, 'Projector'),
+            ],
+            if (room.hasAirConditioning) ...[
+              const SizedBox(height: 10),
+              _detailRow(Icons.ac_unit_outlined, 'Air Conditioning'),
+            ],
+            if (room.hasComputers) ...[
+              const SizedBox(height: 10),
+              _detailRow(Icons.computer_outlined, 'Computers'),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _detailRow(IconData icon, String text) {
+    return Row(children: [
+      Icon(icon, size: 16, color: AppColors.lightGray),
+      const SizedBox(width: 10),
+      Expanded(
+        child: Text(text,
+            style: GoogleFonts.inter(
+                fontSize: 13, color: AppColors.darkGray)),
+      ),
+    ]);
   }
 }

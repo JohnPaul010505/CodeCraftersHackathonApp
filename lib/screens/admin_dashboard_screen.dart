@@ -291,7 +291,7 @@ class AdminDashboardBody extends StatelessWidget {
                                         state.rooms.where((r) => r.type == RoomType.lecture).length.toDouble(),
                                         state.rooms.where((r) => r.type == RoomType.laboratory).length.toDouble(),
                                       ],
-                                      colors: const [Color(0xFF616161), Color(0xFF9E9E9E)],
+                                      colors: const [Color(0xFF5C6BC0), Color(0xFFAB47BC)],
                                       labels: ['Lecture', 'Lab'],
                                     ),
                                     _TappableDonutChart(
@@ -300,7 +300,7 @@ class AdminDashboardBody extends StatelessWidget {
                                         state.availableRooms.toDouble(),
                                         state.occupiedRooms.toDouble(),
                                       ],
-                                      colors: const [AppColors.available, AppColors.conflict],
+                                      colors: const [Color(0xFF26A69A), Color(0xFFEF5350)],
                                       labels: ['Available', 'Occupied'],
                                     ),
                                   ],
@@ -640,7 +640,7 @@ class _TeacherWorkloadChartState extends State<_TeacherWorkloadChart> {
                                           : const LinearGradient(
                                           begin: Alignment.bottomCenter,
                                           end: Alignment.topCenter,
-                                          colors: [AppColors.darkGray, Color(0xFF616161)]),
+                                          colors: [Color(0xFF1565C0), Color(0xFF42A5F5)]),
                                       width: isHovered ? 17 : 14,
                                     ),
                                     const SizedBox(width: 2),
@@ -649,7 +649,7 @@ class _TeacherWorkloadChartState extends State<_TeacherWorkloadChart> {
                                       gradient: const LinearGradient(
                                           begin: Alignment.bottomCenter,
                                           end: Alignment.topCenter,
-                                          colors: [Color(0xFFBDBDBD), Color(0xFFE0E0E0)]),
+                                          colors: [Color(0xFF2E7D32), Color(0xFF66BB6A)]),
                                       width: isHovered ? 17 : 14,
                                     ),
                                   ],
@@ -742,7 +742,7 @@ class _TeacherWorkloadChartState extends State<_TeacherWorkloadChart> {
               width: 12, height: 12,
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
-                    colors: [AppColors.darkGray, Color(0xFF616161)]),
+                    colors: [Color(0xFF1565C0), Color(0xFF42A5F5)]),
               ),
             ),
             const SizedBox(width: 5),
@@ -751,7 +751,7 @@ class _TeacherWorkloadChartState extends State<_TeacherWorkloadChart> {
             const SizedBox(width: 16),
             Container(
               width: 12, height: 12,
-              decoration: const BoxDecoration(color: Color(0xFFD0D0D0)),
+              decoration: const BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF2E7D32), Color(0xFF66BB6A)])),
             ),
             const SizedBox(width: 5),
             Text('Max Units',
@@ -1111,8 +1111,11 @@ class _NotificationsDialogState extends State<_NotificationsDialog> {
     // no manual refresh needed when a teacher sends a new chat request.
     return Consumer<AppState>(
       builder: (context, liveState, _) {
-        final pending = liveState.chatMessages.where((m) => !m.isResolved).toList();
-        final resolved = liveState.chatMessages.where((m) => m.isResolved).toList();
+        final _rawPending = liveState.chatMessages.where((m) => !m.isResolved).toList();
+        final _seenIds = <String>{};
+        final pending = _rawPending.where((m) => _seenIds.add(m.id)).toList();
+        final _seenR = <String>{};
+        final resolved = liveState.chatMessages.where((m) => m.isResolved && _seenR.add(m.id)).toList();
 
         return Material(
           color: Colors.transparent,
